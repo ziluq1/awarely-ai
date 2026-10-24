@@ -108,7 +108,7 @@ function SharedBody() {
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => setOpen((value) => !value)}>{open ? "Close form" : "New shared timeline"}</Button>
         <Link className="inline-flex min-h-11 items-center text-sm font-medium text-accent-text" href="/notifications">
-          Alerts
+          Notification
         </Link>
       </div>
       <StatusNote message={message} />

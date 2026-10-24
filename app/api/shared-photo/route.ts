@@ -2,14 +2,13 @@ import { connection } from "next/server";
 import { isOwnedPhotoPath, PHOTO_BUCKET } from "@/lib/photo-links";
 import { privateImageResponse, privateTextResponse } from "@/lib/private-image";
 import { isUuid } from "@/lib/social-rules";
-import { serverSupabase } from "@/lib/supabase/server";
+import { requireVerifiedUser } from "@/lib/supabase/require-user";
 
 export async function GET(request: Request) {
   await connection();
-  const supabase = await serverSupabase();
-  if (!supabase) return privateTextResponse("Supabase is not configured.", 503);
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return privateTextResponse("Log in to open this photo.", 401);
+  const gate = await requireVerifiedUser();
+  if (!gate.ok) return gate.response;
+  const { supabase } = gate;
 
   const entryId = new URL(request.url).searchParams.get("entry") ?? "";
   if (!isUuid(entryId)) return privateTextResponse("That photo is not available.", 404);

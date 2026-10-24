@@ -15,6 +15,7 @@ import type { PreparedReply } from "@/lib/companion-script";
 import { createId } from "@/lib/format";
 import { COMPANION_NOTE_LIMIT } from "@/lib/types";
 import { SafetyNotice } from "@/components/safety-notice";
+import { ChatIdentity } from "@/components/social-ui";
 import { Button, EmptyBlock, ErrorBlock, PageHeader, cardClass, fieldClass } from "@/components/ui";
 
 type GuideMessage = {
@@ -133,7 +134,7 @@ export function CompanionChat({ unavailable = "disabled" }: { unavailable?: keyo
               message.role === "user" ? (
                 <li key={message.id} className="flex justify-end">
                   <div className="max-w-[40rem] rounded-[1.5rem] bg-inverse px-4 py-3 text-inverse-text">
-                    <p className="text-xs font-medium uppercase tracking-[0.14em] opacity-80">You</p>
+                    <ChatIdentity />
                     <p className="journal-text mt-1 leading-relaxed">{message.text}</p>
                   </div>
                 </li>

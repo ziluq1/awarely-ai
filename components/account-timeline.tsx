@@ -8,6 +8,7 @@ import type { ChangeEvent, FormEvent } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { CustomFeelingField } from "@/components/custom-feeling";
 import { ShareEntryButton } from "@/components/share-entry-button";
+import { TimelineCollage } from "@/components/timeline-collage";
 import { Button, EmptyBlock, ErrorBlock, LoadingBlock, buttonClass, cardClass, fieldClass } from "@/components/ui";
 import {
   createAccountEntry,
@@ -16,7 +17,7 @@ import {
   updateAccountEntry,
 } from "@/lib/account-journal";
 import type { AccountEntry } from "@/lib/account-journal";
-import { entryFeelings, formatDay, formatWhen, moodLabel } from "@/lib/format";
+import { entryFeelings, formatWhen } from "@/lib/format";
 import { openCamera, oppositeFacing, playCameraPreview, stopMediaStream } from "@/lib/camera";
 import type { CameraFacing } from "@/lib/camera";
 import { ImagePrepError, cameraErrorMessage, dataUrlToJpegBlob, imageFileToJpegBlob, videoFrameToDataUrl } from "@/lib/images";
@@ -55,8 +56,10 @@ export function AccountTimeline() {
   const [lightbox, setLightbox] = useState<AccountEntry | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AccountEntry | null>(null);
 
+  const accountReady = auth.status === "signed-in" && auth.verified;
+
   async function refresh() {
-    if (auth.status !== "signed-in") {
+    if (!accountReady) {
       setEntries([]);
       setLoading(false);
       return;
@@ -79,7 +82,7 @@ export function AccountTimeline() {
     if (auth.status === "loading") return;
     let current = true;
     void (async () => {
-      if (auth.status !== "signed-in") {
+      if (auth.status !== "signed-in" || !auth.verified) {
         if (!current) return;
         setEntries([]);
         setLoading(false);
@@ -103,7 +106,7 @@ export function AccountTimeline() {
     return () => {
       current = false;
     };
-  }, [auth.status, auth.user?.id]);
+  }, [auth.status, auth.user?.id, auth.verified]);
 
   useEffect(() => {
     if (!highlightedId) return;
@@ -116,8 +119,7 @@ export function AccountTimeline() {
     if (!dateFilter) return true;
     return localDay(entry.createdAt) === dateFilter;
   });
-  const photos = visible.filter((entry) => entry.photoUrl);
-  const showTimeline = auth.status === "signed-in" && !loading && !error && entries.length > 0;
+  const showTimeline = accountReady && !loading && !error && entries.length > 0;
 
   function saved(entry: AccountEntry) {
     setEntries((current) => [entry, ...current.filter((item) => item.id !== entry.id)].sort(newestFirst));
@@ -127,7 +129,7 @@ export function AccountTimeline() {
 
   function focusEntry(id: string) {
     setHighlightedId(id);
-    document.getElementById(`entry-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    document.getElementById(`entry-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
@@ -146,13 +148,21 @@ export function AccountTimeline() {
         </a>
       </header>
 
-      {auth.status === "loading" || (auth.status === "signed-in" && loading) ? (
+      {auth.status === "loading" || (accountReady && loading) ? (
         <LoadingBlock label="Opening your timeline." />
       ) : null}
       {error ? (
         <ErrorBlock title="The timeline could not be loaded" message={error}>
           <Button onClick={() => void refresh()}>Try again</Button>
         </ErrorBlock>
+      ) : null}
+
+      {auth.status === "signed-in" && !auth.verified ? (
+        <EmptyBlock title="Confirm your email" message="Your timeline stays closed until the confirmation link succeeds.">
+          <Link href="/login?error=unverified" className={buttonClass("primary")}>
+            Resend the confirmation email
+          </Link>
+        </EmptyBlock>
       ) : null}
 
       {auth.status === "anonymous" ? (
@@ -169,7 +179,7 @@ export function AccountTimeline() {
         </EmptyBlock>
       ) : null}
 
-      {auth.status === "signed-in" && !loading && !error && entries.length === 0 ? (
+      {accountReady && !loading && !error && entries.length === 0 ? (
         <EmptyBlock
           title="Your timeline is waiting"
           message="This is a quiet place for the moments you choose to keep. Start with one photo, or skip the photo and write a few words."
@@ -187,45 +197,8 @@ export function AccountTimeline() {
               <Button onClick={() => void refresh()}>Try again</Button>
             </ErrorBlock>
           ) : null}
-          <section aria-labelledby="photo-timeline" className="space-y-4">
-            <h2 id="photo-timeline" className="font-serif text-3xl text-foreground">
-              Photos
-            </h2>
-            {photos.length === 0 ? (
-              <p className="rounded-2xl bg-accent px-4 py-3 text-sm text-accent-text" role="status">
-                No photos in this view. Written entries are below.
-              </p>
-            ) : (
-              <ul className="grid grid-cols-2 gap-3 min-[600px]:grid-cols-3 lg:grid-cols-4">
-                {photos.map((entry) => (
-                  <li key={entry.id}>
-                    <button
-                      type="button"
-                      onClick={() => focusEntry(entry.id)}
-                      className="block w-full overflow-hidden rounded-2xl text-left outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-text"
-                      aria-label={`Go to the entry from ${formatDay(entry.createdAt)}, ${moodMark(entry)}`}
-                    >
-                      <span className="relative block">
-                        <img
-                          src={entry.photoUrl ?? ""}
-                          alt=""
-                          className="aspect-square w-full bg-camera object-cover"
-                        />
-                        <span className="absolute inset-x-2 bottom-2 flex items-end justify-between gap-2">
-                          <span className="rounded-full bg-card/90 px-2 py-1 text-xs font-medium text-foreground">
-                            {formatDay(entry.createdAt)}
-                          </span>
-                          <span className="rounded-full bg-card/90 px-2 py-1 text-xs font-medium text-foreground">
-                            {moodMark(entry)}
-                          </span>
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          {visible.length > 0 ? <TimelineCollage entries={visible} onOpen={focusEntry} /> : null}
+          <JournalScrollTop />
 
           <section aria-labelledby="written-timeline" className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -270,7 +243,7 @@ export function AccountTimeline() {
       ) : null}
 
       <section id="capture-moment" className="scroll-mt-24">
-        <CaptureForm signedIn={auth.status === "signed-in"} onSaved={saved} />
+        <CaptureForm signedIn={accountReady} onSaved={saved} />
       </section>
 
       {lightbox?.photoUrl ? <Lightbox entry={lightbox} onClose={() => setLightbox(null)} /> : null}
@@ -286,6 +259,34 @@ export function AccountTimeline() {
         />
       ) : null}
     </div>
+  );
+}
+
+function JournalScrollTop() {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    const journal = document.getElementById("written-timeline");
+    if (!journal) return;
+    function onScroll() {
+      const top = journal?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
+      setShow(top < window.innerHeight - 48);
+    }
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  if (!show) return null;
+
+  return (
+    <button
+      type="button"
+      className="fixed bottom-1 right-4 z-40 min-h-9 rounded-full border border-line bg-card px-3 text-sm font-medium text-foreground"
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+    >
+      Top
+    </button>
   );
 }
 
@@ -508,6 +509,7 @@ function CaptureForm({ signedIn, onSaved }: { signedIn: boolean; onSaved: (entry
         existing={null}
         submitLabel="Save Entry"
         onSubmit={async (draft, onProgress) => {
+          if (!signedIn) return { ok: false, message: "Log in with a confirmed email before saving to your account." };
           if (!draft.photo && !draft.skipPhoto) {
             return { ok: false, message: "Add a photo, or choose Skip photo." };
           }
@@ -956,10 +958,6 @@ function MoodButton({ pressed, onClick, children }: { pressed: boolean; onClick:
       {children}
     </button>
   );
-}
-
-function moodMark(entry: AccountEntry): string {
-  return moodLabel(entry.mood) ?? (entry.customFeeling?.trim() || "No label");
 }
 
 function moodChoice(value: string): MoodId | "all" {

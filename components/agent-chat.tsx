@@ -7,6 +7,7 @@ import type { CompanionFailure, CompanionSuccess } from "@/lib/agent/types";
 import { createId } from "@/lib/format";
 import { COMPANION_NOTE_LIMIT } from "@/lib/types";
 import { SafetyNotice } from "@/components/safety-notice";
+import { ChatIdentity } from "@/components/social-ui";
 import { Button, ErrorBlock, PageHeader, cardClass, fieldClass } from "@/components/ui";
 
 const PROMPTS = [
@@ -146,7 +147,7 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
               <li key={turn.id} className="space-y-3">
                 <div className="flex justify-end">
                   <div className="max-w-[40rem] rounded-[1.5rem] bg-inverse px-4 py-3 text-inverse-text">
-                    <p className="text-xs font-medium uppercase tracking-[0.14em] opacity-80">You</p>
+                    <ChatIdentity />
                     <p className="journal-text mt-1 leading-relaxed">{turn.user}</p>
                   </div>
                 </div>

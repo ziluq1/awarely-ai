@@ -3,15 +3,25 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { Avatar } from "@/components/social-ui";
 import type { AuthProfile } from "@/lib/auth";
 import { Button, buttonClass } from "@/components/ui";
 
-export function AuthControls({ compact = false }: { compact?: boolean }) {
+export function AuthControls({ compact = false, part = "full" }: { compact?: boolean; part?: "full" | "identity" | "logout" }) {
   const auth = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
   if (auth.status === "loading") {
+    if (part === "logout") return null;
+    return (
+      <p className="text-xs text-muted" role="status">
+        Checking sign-in…
+      </p>
+    );
+  }
+
+  if (auth.status === "signed-in" && auth.user && auth.verified && !auth.identityReady && part !== "logout") {
     return (
       <p className="text-xs text-muted" role="status">
         Checking sign-in…
@@ -24,6 +34,7 @@ export function AuthControls({ compact = false }: { compact?: boolean }) {
       <SignedIn
         user={auth.user}
         compact={compact}
+        part={part}
         pending={pending}
         error={error}
         onLogout={() => {
@@ -37,6 +48,8 @@ export function AuthControls({ compact = false }: { compact?: boolean }) {
       />
     );
   }
+
+  if (part === "logout") return null;
 
   if (compact) {
     return (
@@ -66,29 +79,52 @@ export function AuthControls({ compact = false }: { compact?: boolean }) {
 function SignedIn({
   user,
   compact,
+  part,
   pending,
   error,
   onLogout,
 }: {
   user: AuthProfile;
   compact: boolean;
+  part: "full" | "identity" | "logout";
   pending: boolean;
   error: string;
   onLogout: () => void;
 }) {
+  const logout = (
+    <Button variant={compact ? "quiet" : "secondary"} className={compact ? "px-3" : "w-full"} disabled={pending} onClick={onLogout}>
+      {pending ? "Logging out…" : "Log out"}
+    </Button>
+  );
+  if (part === "logout") {
+    return (
+      <div>
+        {logout}
+        {error ? (
+          <p className="mt-2 text-xs text-danger" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div className={compact ? "flex items-center gap-2" : "rounded-2xl border border-line bg-background p-3"}>
-      <div className={`flex min-w-0 items-center gap-2 ${compact ? "" : "gap-3"}`} aria-label={`Signed in as ${user.name}`}>
-        <Avatar user={user} compact={compact} />
+      <div className={`flex min-w-0 items-center gap-2 ${compact ? "" : "gap-3"}`} aria-label={`Signed in as ${user.savedName ?? user.name}`}>
+        <Avatar
+          userId={user.id}
+          name={user.savedName ?? user.name}
+          hasPhoto={user.hasAvatar}
+          revision={user.avatarRevision}
+          size={compact ? "sm" : "md"}
+        />
         <div className="min-w-0">
-          <p className={compact ? "sr-only" : "truncate text-sm font-medium text-foreground"}>{user.name}</p>
+          <p className={compact ? "sr-only" : "truncate text-sm font-medium text-foreground"}>{user.savedName ?? user.name}</p>
           {compact ? null : <p className="truncate text-xs text-muted">{user.email}</p>}
         </div>
       </div>
-      <Button variant={compact ? "quiet" : "secondary"} className={compact ? "px-3" : "mt-3 w-full"} disabled={pending} onClick={onLogout}>
-        {pending ? "Logging out…" : "Log out"}
-      </Button>
-      {error ? (
+      {part === "identity" ? null : <div className={compact ? "" : "mt-3"}>{logout}</div>}
+      {error && part !== "identity" ? (
         <p className="text-xs text-danger" role="alert">
           {error}
         </p>
@@ -97,15 +133,3 @@ function SignedIn({
   );
 }
 
-function Avatar({ user, compact }: { user: AuthProfile; compact: boolean }) {
-  const size = compact ? "h-9 w-9 text-sm" : "h-11 w-11 text-base";
-  if (user.avatarUrl) {
-    return <img src={user.avatarUrl} alt="" className={`${size} shrink-0 rounded-full object-cover`} />;
-  }
-  const initial = user.name.trim().charAt(0).toUpperCase() || "A";
-  return (
-    <span aria-hidden="true" className={`${size} grid shrink-0 place-items-center rounded-full bg-accent font-serif text-accent-text`}>
-      {initial}
-    </span>
-  );
-}

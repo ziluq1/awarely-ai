@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Newsreader } from "next/font/google";
 import Script from "next/script";
 import { Suspense } from "react";
 import { AppearanceProvider } from "@/components/appearance-provider";
+import { AuthHashForwarder } from "@/components/auth-hash";
 import { AuthProvider } from "@/components/auth-provider";
 import { HeaderFallback, SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
@@ -58,6 +59,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </Script>
         <AppearanceProvider>
           <AuthProvider>
+            <AuthHashForwarder />
             <JournalProvider>
             <a href="#content" className="skip-link">
               Skip to content

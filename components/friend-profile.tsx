@@ -20,7 +20,7 @@ import { friendAction, usernameError } from "@/lib/social-rules";
 export function FriendProfile({ username }: { username: string }) {
   return (
     <AccountGate>
-      <FriendProfileBody username={username} />
+      <FriendProfileBody key={username.trim().toLowerCase()} username={username} />
     </AccountGate>
   );
 }

@@ -10,7 +10,7 @@ import { EmptyBlock, ErrorBlock, LoadingBlock, buttonClass, cardClass } from "@/
 import { coverPhotoSrc, profilePhotoSrc, sharedPhotoSrc } from "@/lib/social-rules";
 
 export function AccountGate({ children }: { children: ReactNode }) {
-  const { status, configured, user } = useAuth();
+  const { status, configured, user, verified } = useAuth();
   if (status === "loading") return <LoadingBlock label="Checking your account." />;
   if (!configured) {
     return (
@@ -25,6 +25,15 @@ export function AccountGate({ children }: { children: ReactNode }) {
       <EmptyBlock title="Log in to continue" message="Friends and shared timelines stay with your account.">
         <Link className={buttonClass("primary")} href="/login">
           Log in
+        </Link>
+      </EmptyBlock>
+    );
+  }
+  if (!verified) {
+    return (
+      <EmptyBlock title="Confirm your email" message="This part of your account stays closed until the confirmation link succeeds.">
+        <Link className={buttonClass("primary")} href="/login?error=unverified">
+          Resend the confirmation email
         </Link>
       </EmptyBlock>
     );
@@ -83,15 +92,18 @@ export function Avatar({
   name,
   hasPhoto,
   size = "md",
+  revision = 0,
 }: {
   userId: string;
   name: string;
   hasPhoto: boolean;
   size?: "sm" | "md";
+  revision?: number;
 }) {
-  const [failed, setFailed] = useState(false);
+  const src = hasPhoto ? profilePhotoSrc(userId, revision) : "";
+  const [failedSrc, setFailedSrc] = useState("");
   const dimension = size === "sm" ? "h-9 w-9 text-sm" : "h-12 w-12 text-lg";
-  if (!hasPhoto || failed) {
+  if (!src || failedSrc === src) {
     return (
       <span
         aria-hidden="true"
@@ -103,11 +115,24 @@ export function Avatar({
   }
   return (
     <img
-      src={profilePhotoSrc(userId)}
+      src={src}
       alt=""
-      onError={() => setFailed(true)}
+      onError={() => setFailedSrc(src)}
       className={`shrink-0 rounded-full bg-accent object-cover ${dimension}`}
     />
+  );
+}
+
+export function ChatIdentity() {
+  const { user } = useAuth();
+  const name = user?.savedName ?? "You";
+  return (
+    <div className="flex items-center gap-2">
+      {user ? (
+        <Avatar userId={user.id} name={name} hasPhoto={user.hasAvatar} revision={user.avatarRevision} size="sm" />
+      ) : null}
+      <p className="text-xs font-medium uppercase tracking-[0.14em] opacity-80">{name}</p>
+    </div>
   );
 }
 

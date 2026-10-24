@@ -44,12 +44,10 @@ function NotificationsBody() {
 
   return (
     <div className="space-y-8">
-      <PageHeader eyebrow="Alerts" title="What changed">
-        <p>Alerts name the person and the timeline. They do not include journal text or photos.</p>
-      </PageHeader>
+      <PageHeader eyebrow="Notification" />
       <StatusNote message={message} />
-      {loading ? <LoadingBlock label="Loading alerts." /> : null}
-      {error ? <ErrorBlock title="Alerts could not be loaded" message={error} /> : null}
+      {loading ? <LoadingBlock label="Loading notifications." /> : null}
+      {error ? <ErrorBlock title="Notifications could not be loaded" message={error} /> : null}
       {!loading && !error && notices.some((notice) => !notice.readAt) ? (
         <Button
           variant="secondary"
@@ -61,7 +59,7 @@ function NotificationsBody() {
               }
               const next = await listNotices();
               if (next.ok) setNotices(next.value);
-              setMessage("Alerts marked as read.");
+              setMessage("Notifications marked as read.");
             })
           }
         >
@@ -87,7 +85,7 @@ function NotificationsBody() {
         </div>
       ) : null}
       {!loading && !error && !notices.length ? (
-        <EmptyBlock title="No alerts yet" message="Friend requests, accepted requests, timeline invitations, and new shared entries will show up here." />
+        <EmptyBlock title="No notifications yet" message="Friend requests, accepted requests, timeline invitations, and new shared entries will show up here." />
       ) : null}
     </div>
   );

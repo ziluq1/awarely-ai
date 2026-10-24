@@ -336,15 +336,20 @@ declare
   me uuid := auth.uid();
   user_email text;
   user_meta jsonb;
+  confirmed timestamptz;
 begin
   if me is null then
     raise exception 'Log in to continue.';
   end if;
 
-  select u.email, coalesce(u.raw_user_meta_data, '{}'::jsonb)
-  into user_email, user_meta
+  select u.email, coalesce(u.raw_user_meta_data, '{}'::jsonb), u.email_confirmed_at
+  into user_email, user_meta, confirmed
   from auth.users u
   where u.id = me;
+
+  if confirmed is null then
+    raise exception 'Confirm your email before using your account.';
+  end if;
 
   perform public.social_insert_profile(me, coalesce(user_email, 'member'), coalesce(user_meta, '{}'::jsonb));
   return me;
@@ -575,9 +580,10 @@ declare
   person public.profiles;
 begin
   me := public.social_me();
-  if cleaned is not null and cleaned <> me::text || '/avatar.jpg' then
+  if cleaned is not null and lower(cleaned) <> lower(me::text) || '/avatar.jpg' then
     raise exception 'That profile photo could not be saved.';
   end if;
+  cleaned := lower(cleaned);
 
   update public.profiles
   set avatar_path = cleaned
@@ -1631,17 +1637,56 @@ drop policy if exists timeline_covers_update_own on storage.objects;
 drop policy if exists timeline_covers_delete_own on storage.objects;
 drop policy if exists journal_photos_read_shared on storage.objects;
 
+create or replace function public.social_can_read_avatar(object_name text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.profiles p
+    where p.avatar_path = object_name
+      and p.avatar_path = lower(p.id::text) || '/avatar.jpg'
+      and (
+        p.id = (select auth.uid())
+        or exists (
+          select 1 from public.blocks b
+          where b.blocker_id = (select auth.uid())
+            and b.blocked_id = p.id
+        )
+        or exists (
+          select 1 from public.friendships f
+          where f.status in ('pending', 'accepted')
+            and (
+              (f.requester_id = (select auth.uid()) and f.addressee_id = p.id)
+              or (f.addressee_id = (select auth.uid()) and f.requester_id = p.id)
+            )
+        )
+        or public.social_shares_timeline(p.id)
+        or (
+          p.searchable
+          and not exists (
+            select 1 from public.blocks b
+            where (b.blocker_id = (select auth.uid()) and b.blocked_id = p.id)
+               or (b.blocker_id = p.id and b.blocked_id = (select auth.uid()))
+          )
+        )
+      )
+  );
+$$;
+
+revoke all on function public.social_can_read_avatar(text) from public, anon;
+grant execute on function public.social_can_read_avatar(text) to authenticated;
+
 create policy profile_avatars_select_visible
   on storage.objects
   for select
   to authenticated
   using (
     bucket_id = 'profile-avatars'
-    and exists (
-      select 1 from public.profiles p
-      where p.avatar_path = name
-        and p.avatar_path = p.id::text || '/avatar.jpg'
-    )
+    and public.social_can_read_avatar(name)
   );
 
 create policy profile_avatars_insert_own
@@ -1650,7 +1695,7 @@ create policy profile_avatars_insert_own
   to authenticated
   with check (
     bucket_id = 'profile-avatars'
-    and name = (select auth.uid())::text || '/avatar.jpg'
+    and lower(name) = lower((select auth.uid())::text) || '/avatar.jpg'
   );
 
 create policy profile_avatars_update_own
@@ -1659,11 +1704,11 @@ create policy profile_avatars_update_own
   to authenticated
   using (
     bucket_id = 'profile-avatars'
-    and name = (select auth.uid())::text || '/avatar.jpg'
+    and lower(name) = lower((select auth.uid())::text) || '/avatar.jpg'
   )
   with check (
     bucket_id = 'profile-avatars'
-    and name = (select auth.uid())::text || '/avatar.jpg'
+    and lower(name) = lower((select auth.uid())::text) || '/avatar.jpg'
   );
 
 create policy profile_avatars_delete_own
@@ -1672,7 +1717,7 @@ create policy profile_avatars_delete_own
   to authenticated
   using (
     bucket_id = 'profile-avatars'
-    and name = (select auth.uid())::text || '/avatar.jpg'
+    and lower(name) = lower((select auth.uid())::text) || '/avatar.jpg'
   );
 
 create policy timeline_covers_select_visible

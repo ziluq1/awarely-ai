@@ -6,7 +6,16 @@ import { useEffect, useId, useState } from "react";
 import type { FormEvent } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { Button, ErrorBlock, PageHeader, cardClass, fieldClass } from "@/components/ui";
-import { authErrorMessage, isEmail } from "@/lib/auth";
+import {
+  PASSWORD_RESET_REDIRECT_TO,
+  SIGNUP_EMAIL_REDIRECT_TO,
+  authCallbackUrl,
+  authErrorMessage,
+  authLinkMessage,
+  isEmail,
+  isEmailVerified,
+  safeNextPath,
+} from "@/lib/auth";
 import { browserSupabase } from "@/lib/supabase/browser";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
@@ -47,20 +56,24 @@ export function AuthScreen({ mode }: { mode: Mode }) {
   const [fieldError, setFieldError] = useState("");
   const [formError, setFormError] = useState("");
   const [notice, setNotice] = useState("");
-  const [pending, setPending] = useState<"form" | "google" | null>(null);
+  const [pending, setPending] = useState<"form" | "google" | "resend" | null>(null);
+
+  const nextPath = params.get("next");
 
   useEffect(() => {
-    if (mode === "reset" || auth.status !== "signed-in") return;
-    router.replace("/");
-  }, [auth.status, mode, router]);
+    if (mode === "reset" || auth.status !== "signed-in" || !auth.verified) return;
+    if (mode === "login") {
+      router.replace("/");
+      return;
+    }
+    router.replace(safeNextPath(nextPath));
+  }, [auth.status, auth.verified, mode, nextPath, router]);
 
   const callbackError = params.get("error");
-  const banner =
-    callbackError === "config"
-      ? "Supabase is not configured in this app yet."
-      : callbackError === "callback"
-        ? "That sign-in link expired or could not be confirmed. Request a new one and try again."
-        : "";
+  const banner = authLinkMessage(callbackError);
+  const canResend =
+    (mode === "login" || mode === "signup") &&
+    (Boolean(banner) || notice.startsWith("Check your email") || formError.includes("Confirm your email"));
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -98,13 +111,17 @@ export function AuthScreen({ mode }: { mode: Mode }) {
     }
 
     setPending("form");
-    const origin = window.location.origin;
 
     if (mode === "login") {
-      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       setPending(null);
       if (error) {
         setFormError(authErrorMessage(error.message));
+        return;
+      }
+      if (!isEmailVerified(data.user)) {
+        await supabase.auth.signOut();
+        setFormError(authErrorMessage("Email not confirmed"));
         return;
       }
       router.replace("/");
@@ -115,15 +132,16 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
-        options: { emailRedirectTo: `${origin}/auth/callback` },
+        options: { emailRedirectTo: SIGNUP_EMAIL_REDIRECT_TO },
       });
       setPending(null);
       if (error) {
         setFormError(authErrorMessage(error.message));
         return;
       }
-      if (!data.session) {
-        setNotice("Check your email for a confirmation link from Supabase. After you confirm, you can log in.");
+      if (!data.session || !isEmailVerified(data.user)) {
+        if (data.session) await supabase.auth.signOut();
+        setNotice("Check your email for a confirmation link. After you confirm, you can log in.");
         return;
       }
       router.replace("/");
@@ -132,7 +150,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
 
     if (mode === "forgot") {
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${origin}/auth/callback?next=/reset-password`,
+        redirectTo: PASSWORD_RESET_REDIRECT_TO,
       });
       setPending(null);
       if (error) {
@@ -164,12 +182,39 @@ export function AuthScreen({ mode }: { mode: Mode }) {
     setPending("google");
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: { redirectTo: authCallbackUrl(window.location.origin, "oauth") },
     });
     if (error) {
       setPending(null);
       setFormError(authErrorMessage(error.message));
     }
+  }
+
+  async function resendConfirmation() {
+    if (pending) return;
+    const address = email.trim() || auth.user?.email || "";
+    if (!isEmail(address)) {
+      setFieldError("Enter the email on the account, then send the confirmation email again.");
+      return;
+    }
+    const supabase = browserSupabase();
+    if (!supabase) {
+      setFormError("Supabase is not configured. Add the project URL and publishable key, then restart the dev server.");
+      return;
+    }
+    setPending("resend");
+    setFormError("");
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: address,
+      options: { emailRedirectTo: SIGNUP_EMAIL_REDIRECT_TO },
+    });
+    setPending(null);
+    if (error) {
+      setFormError(authErrorMessage(error.message));
+      return;
+    }
+    setNotice("Check your email for a new confirmation link. Use the newest one.");
   }
 
   const copy = COPY[mode];
@@ -191,6 +236,11 @@ export function AuthScreen({ mode }: { mode: Mode }) {
           <p className="rounded-2xl bg-sage px-4 py-3 text-sm leading-relaxed text-sage-text" role="status">
             {notice}
           </p>
+        ) : null}
+        {canResend ? (
+          <Button variant="secondary" className="w-full" disabled={pending !== null} onClick={() => void resendConfirmation()}>
+            {pending === "resend" ? "Sending confirmation email…" : "Resend confirmation email"}
+          </Button>
         ) : null}
 
         {mode === "login" || mode === "signup" ? (

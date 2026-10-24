@@ -32,6 +32,60 @@ type EntryRow = {
   photo_path: string | null;
 };
 
+export type SavedMood = {
+  id: string;
+  createdAt: string;
+  journalText: string;
+  mood: string | null;
+  customFeeling: string | null;
+};
+
+export async function listPhotoTimes(): Promise<JournalResult<string[]>> {
+  const ready = await readyClient();
+  if (!ready.ok) return ready;
+  const times: string[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await ready.value.supabase
+      .from("journal_entries")
+      .select("created_at")
+      .not("photo_path", "is", null)
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error) return { ok: false, message: journalError(error.message, error.code) };
+    const batch = Array.isArray(data) ? data : [];
+    for (const row of batch) {
+      if (row && typeof row === "object" && typeof (row as { created_at?: unknown }).created_at === "string") {
+        times.push((row as { created_at: string }).created_at);
+      }
+    }
+    if (batch.length < pageSize) break;
+  }
+  return { ok: true, value: times };
+}
+
+export async function listSavedMoods(): Promise<JournalResult<SavedMood[]>> {
+  const ready = await readyClient();
+  if (!ready.ok) return ready;
+  const rows: SavedMood[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await ready.value.supabase
+      .from("journal_entries")
+      .select("id, created_at, mood, custom_feeling, journal_text")
+      .order("created_at", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) return { ok: false, message: journalError(error.message, error.code) };
+    const batch = Array.isArray(data) ? data : [];
+    for (const row of batch) {
+      const saved = savedMoodRow(row);
+      if (saved) rows.push(saved);
+    }
+    if (batch.length < pageSize) break;
+  }
+  return { ok: true, value: rows };
+}
+
 export async function listAccountEntries(): Promise<JournalResult<AccountList>> {
   const ready = await readyClient();
   if (!ready.ok) return ready;
@@ -274,6 +328,19 @@ function isEntryRow(value: unknown): value is EntryRow {
     (row.custom_feeling === null || typeof row.custom_feeling === "string") &&
     (row.photo_path === null || typeof row.photo_path === "string")
   );
+}
+
+function savedMoodRow(value: unknown): SavedMood | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.id !== "string" || typeof row.created_at !== "string" || typeof row.journal_text !== "string") return null;
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    journalText: row.journal_text,
+    mood: typeof row.mood === "string" && row.mood.trim() ? row.mood : null,
+    customFeeling: typeof row.custom_feeling === "string" && row.custom_feeling.trim() ? row.custom_feeling.trim() : null,
+  };
 }
 
 function toEntry(row: EntryRow, urls: Map<string, string>): AccountEntry {

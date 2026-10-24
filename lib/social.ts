@@ -219,7 +219,7 @@ export async function updateProfile(input: {
   return { ok: true, value: profile };
 }
 
-export async function saveAvatar(file: Blob): Promise<SocialResult<null>> {
+export async function saveAvatar(file: Blob): Promise<SocialResult<Profile>> {
   const supabase = client();
   if (!supabase) return fail("Supabase is not configured.");
   const userId = await currentUserId();
@@ -238,18 +238,22 @@ export async function saveAvatar(file: Blob): Promise<SocialResult<null>> {
   if (uploaded.error) return fail(socialError(uploaded.error));
   const saved = await rpc("set_my_avatar", { next_path: path });
   if (!saved.ok) return saved;
-  return { ok: true, value: null };
+  const profile = profileFrom(saved.value);
+  if (!profile) return fail("Your profile photo was uploaded, but the profile could not be read.");
+  return { ok: true, value: profile };
 }
 
-export async function clearAvatar(): Promise<SocialResult<null>> {
+export async function clearAvatar(): Promise<SocialResult<Profile>> {
   const supabase = client();
   if (!supabase) return fail("Supabase is not configured.");
   const userId = await currentUserId();
   if (!userId) return fail("Log in to continue.");
   const saved = await rpc("set_my_avatar", { next_path: "" });
   if (!saved.ok) return saved;
+  const profile = profileFrom(saved.value);
+  if (!profile) return fail("Your profile could not be read.");
   await supabase.storage.from(AVATAR_BUCKET).remove([avatarObjectPath(userId)]);
-  return { ok: true, value: null };
+  return { ok: true, value: profile };
 }
 
 export async function searchPeople(query: string): Promise<SocialResult<Person[]>> {

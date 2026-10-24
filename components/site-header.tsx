@@ -20,10 +20,12 @@ export function HeaderFallback() {
 function AppNav({ pathname }: { pathname: string | null }) {
   return (
     <>
-      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col gap-6 border-r border-line bg-card/80 px-4 py-6 md:flex">
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-card/80 px-3 py-3 md:flex">
         <Brand />
-        <AuthControls />
-        <nav aria-label="Primary" className="flex flex-col gap-1">
+        <div className="mt-3">
+          <AuthControls part="identity" />
+        </div>
+        <nav aria-label="Primary" className="mt-2 flex flex-col">
           {NAV.map((item) => (
             <NavLink key={item.href} href={item.href} label={item.label} current={isCurrent(pathname, item.href)} />
           ))}
@@ -31,6 +33,9 @@ function AppNav({ pathname }: { pathname: string | null }) {
           <AlertsLink pathname={pathname} current={isCurrent(pathname, "/notifications")} />
           <NavLink href="/settings" label="Settings" current={pathname === "/settings"} />
         </nav>
+        <div className="mt-auto pt-2">
+          <AuthControls part="logout" />
+        </div>
       </aside>
       <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-b border-line/80 bg-background/90 px-3 py-2 backdrop-blur-md md:hidden">
         <Brand compact />
@@ -87,7 +92,7 @@ function AlertsLink({
     };
   }, [pathname, status]);
 
-  const label = count ? `Alerts (${count})` : "Alerts";
+  const label = count ? `Notification (${count})` : "Notification";
   return <NavLink href="/notifications" label={label} current={current} toolbar={toolbar} />;
 }
 
@@ -135,7 +140,7 @@ function NavLink({
           ? `flex min-h-14 min-w-0 flex-1 items-center justify-center rounded-2xl px-0.5 text-center text-[0.7rem] font-medium leading-tight min-[380px]:text-xs ${tone}`
           : toolbar
             ? `inline-flex min-h-11 items-center rounded-full px-2.5 text-xs font-medium min-[380px]:px-3 min-[380px]:text-sm ${tone}`
-            : `flex min-h-11 items-center rounded-2xl px-3 text-sm font-medium ${tone}`
+            : `flex min-h-9 min-w-0 items-center truncate rounded-2xl px-3 text-sm font-medium ${tone}`
       }
     >
       {label}

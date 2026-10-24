@@ -1,13 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/components/auth-provider";
 import { useJournal } from "@/components/journal-provider";
 import { useCompanionStatus } from "@/components/use-companion-status";
 import { buttonClass, cardClass, ErrorBlock } from "@/components/ui";
 import { CustomFeelingField } from "@/components/custom-feeling";
+import { listPhotoTimes, listSavedMoods } from "@/lib/account-journal";
+import type { SavedMood } from "@/lib/account-journal";
+import { photoStreak } from "@/lib/streak";
 import { entryFeelings, formatWhen } from "@/lib/format";
 import { MOODS } from "@/lib/types";
-import type { MoodId } from "@/lib/types";
+import type { JournalEntry, MoodId } from "@/lib/types";
 
 const STEPS = [
   {
@@ -25,15 +30,56 @@ const STEPS = [
 ];
 
 export function Dashboard() {
+  const auth = useAuth();
   const { device, entries, draft, setDraft } = useJournal();
   const recent = entries.slice(0, 3);
-  const moodCounts = MOODS.map((mood) => ({
-    ...mood,
-    count: entries.filter((entry) => entry.mood === mood.id).length,
-  }));
-  const labeled = moodCounts.reduce((sum, mood) => sum + mood.count, 0);
-  const customCount = entries.filter((entry) => entry.customFeeling).length;
-  const peak = Math.max(1, ...moodCounts.map((mood) => mood.count));
+  const [accountMoods, setAccountMoods] = useState<SavedMood[]>([]);
+  const [photoTimes, setPhotoTimes] = useState<string[]>([]);
+  const [moodNote, setMoodNote] = useState("");
+  const [moodLoading, setMoodLoading] = useState(false);
+  const [streakLoading, setStreakLoading] = useState(false);
+  const history = moodHistory(entries, auth.status === "signed-in" && auth.verified ? accountMoods : []);
+  const savedMoods = history.moods.filter((mood) => mood.count > 0);
+  const labeled = savedMoods.reduce((sum, mood) => sum + mood.count, 0);
+  const peak = Math.max(1, ...savedMoods.map((mood) => mood.count));
+
+  useEffect(() => {
+    if (auth.status === "loading") return;
+    if (auth.status !== "signed-in" || !auth.verified) {
+      setAccountMoods([]);
+      setPhotoTimes([]);
+      setMoodNote("");
+      setMoodLoading(false);
+      setStreakLoading(false);
+      return;
+    }
+    let alive = true;
+    setMoodLoading(true);
+    setStreakLoading(true);
+    listSavedMoods().then((result) => {
+      if (!alive) return;
+      setMoodLoading(false);
+      if (!result.ok) {
+        setAccountMoods([]);
+        setMoodNote(result.message);
+        return;
+      }
+      setAccountMoods(result.value);
+      setMoodNote("");
+    });
+    listPhotoTimes().then((result) => {
+      if (!alive) return;
+      setStreakLoading(false);
+      if (!result.ok) {
+        setPhotoTimes([]);
+        return;
+      }
+      setPhotoTimes(result.value);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [auth.status, auth.verified, auth.user?.id]);
 
   function chooseMood(id: MoodId) {
     setDraft({ ...draft, mood: draft.mood === id ? null : id });
@@ -52,17 +98,26 @@ export function Dashboard() {
         </p>
       </section>
 
-      <Link
-        href="/capture"
-        className={`${cardClass} block bg-accent p-6 motion-safe:transition-transform motion-safe:duration-300 hover:motion-safe:-translate-y-0.5 sm:p-8`}
-      >
-        <p className="text-sm font-medium uppercase tracking-[0.18em] text-accent-text">Start here</p>
-        <h2 className="mt-3 font-serif text-3xl text-foreground min-[380px]:text-4xl sm:text-5xl">Capture This Moment</h2>
-        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted">
-          Take a photo, upload an image, or skip the photo. The camera is requested only when you choose it.
-        </p>
-        <span className={`${buttonClass("primary", "mt-6")}`}>Open capture</span>
-      </Link>
+      <div className="grid gap-4 min-[760px]:grid-cols-2">
+        <Link
+          href="/capture"
+          className={`${cardClass} flex aspect-square min-w-0 flex-col bg-accent p-6 motion-safe:transition-transform motion-safe:duration-300 hover:motion-safe:-translate-y-0.5 sm:p-8`}
+        >
+          <p className="text-sm font-medium uppercase tracking-[0.18em] text-accent-text">Start here</p>
+          <h2 className="mt-3 font-serif text-3xl text-foreground sm:text-4xl">Capture This Moment</h2>
+          <p className="mt-4 text-base leading-relaxed text-muted">
+            Take a photo, upload an image, or skip the photo. The camera is requested only when you choose it.
+          </p>
+          <span className={`${buttonClass("primary", "mt-auto")}`}>Open capture</span>
+        </Link>
+        <PhotoStreak
+          count={photoStreak([
+            ...photoTimes,
+            ...entries.filter((entry) => entry.photoDataUrl).map((entry) => entry.createdAt),
+          ])}
+          loading={streakLoading || auth.status === "loading"}
+        />
+      </div>
 
       <section aria-labelledby="mood-checkin-heading" className={`${cardClass} p-6 sm:p-8`}>
         <h2 id="mood-checkin-heading" className="font-serif text-3xl text-foreground">
@@ -129,17 +184,20 @@ export function Dashboard() {
           Mood history
         </h2>
         <p className="max-w-2xl leading-relaxed text-muted">
-          Counts only labels you chose on entries you saved. Photos are never read for a mood.
+          Every label you saved on your account or this device. Photos are never read for a mood.
         </p>
-        {labeled === 0 ? (
-          <p className="leading-relaxed text-muted">
-            {customCount === 0
-              ? "No mood labels yet. Bars appear after you save an entry with a label."
-              : "No preset labels yet. Your own words are listed on each entry."}
+        {moodNote ? (
+          <p className="rounded-2xl bg-accent px-4 py-3 text-sm text-accent-text" role="status">
+            {moodNote}
           </p>
+        ) : null}
+        {moodLoading ? (
+          <p className="leading-relaxed text-muted">Loading saved moods.</p>
+        ) : labeled === 0 && history.customs.length === 0 ? (
+          <p className="leading-relaxed text-muted">No mood labels yet. Bars appear after you save an entry with a label.</p>
         ) : (
           <ul className={`${cardClass} space-y-3 p-6`}>
-            {moodCounts.map((mood) => (
+            {savedMoods.map((mood) => (
               <li key={mood.id}>
                 <div className="flex items-baseline justify-between gap-3 text-sm">
                   <span className="font-medium text-foreground">{mood.label}</span>
@@ -153,13 +211,16 @@ export function Dashboard() {
                 </div>
               </li>
             ))}
+            {history.customs.map((feeling) => (
+              <li key={feeling.text}>
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="font-medium text-foreground">{feeling.text}</span>
+                  <span className="text-muted">{feeling.count}</span>
+                </div>
+              </li>
+            ))}
           </ul>
         )}
-        {customCount > 0 ? (
-          <p className="text-sm text-muted">
-            {customCount} saved {customCount === 1 ? "entry uses" : "entries use"} your own words for a feeling. Those words stay on the entry.
-          </p>
-        ) : null}
       </section>
 
       <section aria-labelledby="recent-heading" className="space-y-4">
@@ -215,6 +276,72 @@ export function Dashboard() {
         </ol>
       </section>
     </div>
+  );
+}
+
+function moodHistory(local: JournalEntry[], account: SavedMood[]) {
+  const counts = new Map<string, { id: string; label: string; count: number }>();
+  for (const mood of MOODS) counts.set(mood.id, { id: mood.id, label: mood.label, count: 0 });
+  const customs = new Map<string, number>();
+
+  function addMood(mood: string | null) {
+    if (!mood) return;
+    const known = counts.get(mood);
+    if (known) {
+      known.count += 1;
+      return;
+    }
+    const label = mood === "tender" ? "Tender" : mood;
+    counts.set(mood, { id: mood, label, count: 1 });
+  }
+
+  function addCustom(feeling: string | null) {
+    const text = feeling?.trim();
+    if (!text) return;
+    customs.set(text, (customs.get(text) ?? 0) + 1);
+  }
+
+  for (const entry of account) {
+    addMood(entry.mood);
+    addCustom(entry.customFeeling);
+  }
+  for (const entry of local) {
+    if (account.some((saved) => sameSavedMoment(entry, saved))) continue;
+    addMood(entry.mood);
+    addCustom(entry.customFeeling);
+  }
+
+  return {
+    moods: [...counts.values()],
+    customs: [...customs.entries()].map(([text, count]) => ({ text, count })),
+  };
+}
+
+function sameSavedMoment(local: JournalEntry, saved: SavedMood): boolean {
+  if (local.reflection.trim() !== saved.journalText.trim()) return false;
+  if ((local.mood ?? null) !== saved.mood) return false;
+  if ((local.customFeeling?.trim() || null) !== saved.customFeeling) return false;
+  const localTime = Date.parse(local.createdAt);
+  const savedTime = Date.parse(saved.createdAt);
+  if (Number.isNaN(localTime) || Number.isNaN(savedTime)) return false;
+  return Math.abs(localTime - savedTime) < 2 * 60 * 1000;
+}
+
+function PhotoStreak({ count, loading }: { count: number; loading: boolean }) {
+  return (
+    <section
+      aria-labelledby="streak-heading"
+      className={`${cardClass} flex aspect-square w-full flex-col items-center justify-center p-6 text-center sm:p-8`}
+    >
+      <h2 id="streak-heading" className="text-sm font-medium uppercase tracking-[0.16em] text-accent-text">
+        Photo streak
+      </h2>
+      <p className="mt-2 font-serif text-5xl leading-none text-foreground">
+        {loading ? "…" : count}
+      </p>
+      <p className="mt-2 text-sm text-muted">{loading ? "" : count === 1 ? "day" : "days"}</p>
+      <p className="mt-3 text-xs leading-snug text-muted">Resets after 24 hours with no photo.</p>
+    </section>
   );
 }
 

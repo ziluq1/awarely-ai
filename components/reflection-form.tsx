@@ -45,7 +45,7 @@ export function ReflectionForm() {
     if (auth.status === "loading") {
       return { ok: false as const, message: "Still checking your sign-in. Try again in a moment." };
     }
-    if (auth.status !== "signed-in") return { ok: true as const, account: false };
+    if (auth.status !== "signed-in" || !auth.verified) return { ok: true as const, account: false };
     try {
       const photo = photoDataUrl ? await dataUrlToJpegBlob(photoDataUrl) : null;
       const result = await createAccountEntry({

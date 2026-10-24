@@ -34,13 +34,16 @@ export function PageHeader({
   children,
 }: {
   eyebrow: string;
-  title: string;
+  title?: string;
   children?: ReactNode;
 }) {
+  const labelClass = "text-sm font-medium uppercase tracking-[0.18em] text-accent-text";
   return (
     <header className="max-w-2xl">
-      <p className="text-sm font-medium uppercase tracking-[0.18em] text-accent-text">{eyebrow}</p>
-      <h1 className="mt-3 font-serif text-3xl leading-[1.1] text-foreground min-[380px]:text-4xl sm:text-5xl">{title}</h1>
+      {title ? <p className={labelClass}>{eyebrow}</p> : <h1 className={labelClass}>{eyebrow}</h1>}
+      {title ? (
+        <h1 className="mt-3 font-serif text-3xl leading-[1.1] text-foreground min-[380px]:text-4xl sm:text-5xl">{title}</h1>
+      ) : null}
       {children ? <div className="mt-4 space-y-3 text-base leading-relaxed text-muted">{children}</div> : null}
     </header>
   );

@@ -160,10 +160,11 @@ function sanitizeEntry(value: unknown): { entry: JournalEntry; photoAdjusted: bo
   const reflection = candidate.reflection.trim();
   if (!reflection || reflection.length > REFLECTION_LIMIT) return null;
   let mood: MoodId | null = null;
-  if (candidate.mood != null) {
-    if (typeof candidate.mood !== "string") return null;
-    if (candidate.mood === "tender") mood = null;
-    else if (MOOD_IDS.has(candidate.mood as MoodId)) mood = candidate.mood as MoodId;
+  const rawMood: unknown = candidate.mood;
+  if (rawMood != null) {
+    if (typeof rawMood !== "string") return null;
+    if (rawMood === "tender") mood = null;
+    else if (MOOD_IDS.has(rawMood as MoodId)) mood = rawMood as MoodId;
     else return null;
   }
   if (

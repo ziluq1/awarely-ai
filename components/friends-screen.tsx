@@ -139,7 +139,7 @@ function FriendsBody() {
           Shared timelines
         </Link>
         <Link className={buttonClass("quiet")} href="/notifications">
-          Alerts
+          Notification
         </Link>
       </div>
 

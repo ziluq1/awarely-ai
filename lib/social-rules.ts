@@ -108,8 +108,9 @@ export function isCoverPath(ownerId: string, timelineId: string, path: string): 
 export const AVATAR_BUCKET = "profile-avatars";
 export const COVER_BUCKET = "timeline-covers";
 
-export function profilePhotoSrc(userId: string): string {
-  return `/api/profile-photo?user=${encodeURIComponent(userId)}`;
+export function profilePhotoSrc(userId: string, revision = 0): string {
+  const base = `/api/profile-photo?user=${encodeURIComponent(userId)}`;
+  return revision > 0 ? `${base}&v=${revision}` : base;
 }
 
 export function coverPhotoSrc(timelineId: string): string {
