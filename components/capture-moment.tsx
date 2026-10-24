@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useJournal } from "@/components/journal-provider";
 import { PhotoView } from "@/components/photo-view";
 import { Button, ErrorBlock, LoadingBlock, PageHeader, cardClass } from "@/components/ui";
+import { openCamera, oppositeFacing, playCameraPreview, stopMediaStream } from "@/lib/camera";
+import type { CameraFacing } from "@/lib/camera";
 import { cameraErrorMessage, imageFileToDataUrl, videoFrameToDataUrl } from "@/lib/images";
 
 type Phase = "choose" | "requesting" | "live" | "reading" | "ready" | "error";
@@ -22,11 +24,14 @@ export function CaptureMoment() {
   const [photo, setPhoto] = useState<string | null>(draft.photoDataUrl);
   const [message, setMessage] = useState<string | null>(null);
   const [previewReady, setPreviewReady] = useState(false);
+  const [facing, setFacing] = useState<CameraFacing>("user");
+  const [switching, setSwitching] = useState(false);
+  const [streamVersion, setStreamVersion] = useState(0);
 
   useEffect(() => {
     return () => {
       requestRef.current += 1;
-      releaseStream(streamRef, videoRef, false);
+      releaseStream(streamRef, videoRef);
     };
   }, []);
 
@@ -35,61 +40,117 @@ export function CaptureMoment() {
     const video = videoRef.current;
     const stream = streamRef.current;
     if (!video || !stream) return;
-    video.srcObject = stream;
-  }, [phase]);
+    let cancelled = false;
+    void playCameraPreview(video, stream).catch(() => {
+      if (cancelled || phaseRef.current !== "live" || streamRef.current !== stream) return;
+      setMessage("The camera preview could not start. You can upload an image or skip.");
+      rememberPhase("error");
+      releaseStream(streamRef, videoRef);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, streamVersion]);
 
   function rememberPhase(next: Phase) {
     phaseRef.current = next;
     setPhase(next);
   }
 
-  async function startCamera() {
+  async function startCamera(nextFacing: CameraFacing = "user") {
     setMessage(null);
     setPreviewReady(false);
-    if (!navigator.mediaDevices?.getUserMedia) {
-      rememberPhase("error");
-      setMessage("This browser cannot open a camera here. You can upload an image or skip.");
-      return;
-    }
+    setSwitching(false);
     phaseRef.current = "requesting";
-    releaseStream(streamRef, videoRef, true);
+    releaseStream(streamRef, videoRef);
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
     rememberPhase("requesting");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const session = await openCamera(nextFacing);
       if (requestId !== requestRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
+        stopMediaStream(session.stream);
         return;
       }
-      stream.getTracks().forEach((track) => {
-        track.onended = () => {
-          if (streamRef.current !== stream) return;
-          streamRef.current = null;
-          if (videoRef.current) videoRef.current.srcObject = null;
-          if (phaseRef.current === "live" || phaseRef.current === "requesting") {
-            rememberPhase("choose");
-            setMessage("The camera stopped. Start it again if you still want a photo.");
-          }
-        };
-      });
-      streamRef.current = stream;
+      holdStream(session.stream);
+      streamRef.current = session.stream;
+      setFacing(session.facing);
+      setStreamVersion((version) => version + 1);
       rememberPhase("live");
     } catch (error) {
       if (requestId !== requestRef.current) return;
-      releaseStream(streamRef, videoRef, true);
+      releaseStream(streamRef, videoRef);
       rememberPhase("error");
       setMessage(cameraErrorMessage(error));
     }
+  }
+
+  async function switchCamera() {
+    if (phaseRef.current !== "live" || switching) return;
+    const nextFacing = oppositeFacing(facing);
+    const previousFacing = facing;
+    const avoidDeviceId = streamRef.current?.getVideoTracks()[0]?.getSettings().deviceId;
+    setMessage(null);
+    setPreviewReady(false);
+    setSwitching(true);
+    releaseStream(streamRef, videoRef);
+    const requestId = requestRef.current + 1;
+    requestRef.current = requestId;
+    try {
+      const session = await openCamera(nextFacing, { switching: true, avoidDeviceId });
+      if (requestId !== requestRef.current) {
+        stopMediaStream(session.stream);
+        return;
+      }
+      holdStream(session.stream);
+      streamRef.current = session.stream;
+      setFacing(session.facing);
+      setStreamVersion((version) => version + 1);
+    } catch (error) {
+      if (requestId !== requestRef.current) return;
+      try {
+        const restored = await openCamera(previousFacing);
+        if (requestId !== requestRef.current) {
+          stopMediaStream(restored.stream);
+          return;
+        }
+        holdStream(restored.stream);
+        streamRef.current = restored.stream;
+        setFacing(restored.facing);
+        setStreamVersion((version) => version + 1);
+        setMessage(cameraErrorMessage(error));
+      } catch (restoreError) {
+        if (requestId !== requestRef.current) return;
+        releaseStream(streamRef, videoRef);
+        rememberPhase("error");
+        setMessage(cameraErrorMessage(restoreError));
+      }
+    } finally {
+      if (requestId === requestRef.current) setSwitching(false);
+    }
+  }
+
+  function holdStream(stream: MediaStream) {
+    stream.getTracks().forEach((track) => {
+      track.onended = () => {
+        if (streamRef.current !== stream) return;
+        streamRef.current = null;
+        if (videoRef.current) videoRef.current.srcObject = null;
+        if (phaseRef.current === "live" || phaseRef.current === "requesting") {
+          rememberPhase("choose");
+          setMessage("The camera stopped. Start it again if you still want a photo.");
+        }
+      };
+    });
   }
 
   async function captureFrame() {
     const video = videoRef.current;
     if (!video) return;
     try {
-      const dataUrl = await videoFrameToDataUrl(video);
+      const dataUrl = await videoFrameToDataUrl(video, { mirror: facing === "user" });
       phaseRef.current = "ready";
-      releaseStream(streamRef, videoRef, true);
+      releaseStream(streamRef, videoRef);
       setPhoto(dataUrl);
       setMessage(null);
       setPreviewReady(false);
@@ -103,8 +164,10 @@ export function CaptureMoment() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    requestRef.current += 1;
     phaseRef.current = "reading";
-    releaseStream(streamRef, videoRef, true);
+    releaseStream(streamRef, videoRef);
+    setSwitching(false);
     rememberPhase("reading");
     setMessage(null);
     try {
@@ -119,8 +182,10 @@ export function CaptureMoment() {
   }
 
   function closeCamera() {
+    requestRef.current += 1;
     phaseRef.current = photo ? "ready" : "choose";
-    releaseStream(streamRef, videoRef, true);
+    releaseStream(streamRef, videoRef);
+    setSwitching(false);
     rememberPhase(photo ? "ready" : "choose");
   }
 
@@ -138,8 +203,9 @@ export function CaptureMoment() {
   }
 
   function skip() {
+    requestRef.current += 1;
     phaseRef.current = "choose";
-    releaseStream(streamRef, videoRef, true);
+    releaseStream(streamRef, videoRef);
     setPhoto(null);
     setDraft({ ...draft, photoDataUrl: null, skippedPhoto: true });
     router.push("/reflect");
@@ -176,27 +242,28 @@ export function CaptureMoment() {
               autoPlay
               playsInline
               muted
-              onLoadedData={(event) => {
-                setPreviewReady(true);
-                const playback = event.currentTarget.play();
-                void playback.catch(() => {
-                  setMessage("The camera preview could not start. You can upload an image or skip.");
-                  rememberPhase("error");
-                  releaseStream(streamRef, videoRef, true);
-                });
-              }}
-              aria-label="Live camera preview"
+              onLoadedData={() => setPreviewReady(true)}
+              aria-label={facing === "user" ? "Live front camera preview" : "Live rear camera preview"}
               className="aspect-[4/3] w-full object-contain"
+              style={facing === "user" ? { transform: "scaleX(-1)" } : undefined}
             />
             {previewReady ? null : (
               <p className="absolute inset-x-4 bottom-4 rounded-full bg-[#241f2b]/80 px-3 py-2 text-center text-sm text-[#fbf8f4]" role="status">
-                Waiting for the camera…
+                {switching ? "Switching camera…" : "Waiting for the camera…"}
               </p>
             )}
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button onClick={captureFrame} disabled={!previewReady}>
+            <Button onClick={captureFrame} disabled={!previewReady || switching}>
               Capture photo
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => void switchCamera()}
+              disabled={switching}
+              aria-label={facing === "user" ? "Switch to the rear camera" : "Switch to the front camera"}
+            >
+              {switching ? "Switching…" : "Switch camera"}
             </Button>
             <Button variant="secondary" onClick={closeCamera}>
               Close camera
@@ -232,7 +299,7 @@ export function CaptureMoment() {
           <p className="mt-2 flex-1 text-sm leading-relaxed text-muted">
             Opens the camera after you press the button. Audio is not requested.
           </p>
-          <Button className="mt-5 w-full" onClick={startCamera} disabled={phase === "requesting" || phase === "reading"}>
+          <Button className="mt-5 w-full" onClick={() => void startCamera()} disabled={phase === "requesting" || phase === "reading" || switching}>
             Take a photo
           </Button>
         </article>
@@ -249,7 +316,7 @@ export function CaptureMoment() {
               accept="image/*"
               onChange={onFile}
               aria-label="Upload an image"
-              disabled={phase === "requesting" || phase === "reading"}
+              disabled={phase === "requesting" || phase === "reading" || switching}
             />
           </label>
         </article>
@@ -267,18 +334,8 @@ export function CaptureMoment() {
   );
 }
 
-function releaseStream(
-  streamRef: { current: MediaStream | null },
-  videoRef: { current: HTMLVideoElement | null },
-  intentional: boolean,
-) {
-  const stream = streamRef.current;
-  if (stream) {
-    stream.getTracks().forEach((track) => {
-      if (intentional) track.onended = null;
-      track.stop();
-    });
-    streamRef.current = null;
-  }
+function releaseStream(streamRef: { current: MediaStream | null }, videoRef: { current: HTMLVideoElement | null }) {
+  stopMediaStream(streamRef.current);
+  streamRef.current = null;
   if (videoRef.current) videoRef.current.srcObject = null;
 }

@@ -17,6 +17,8 @@ import {
 } from "@/lib/account-journal";
 import type { AccountEntry } from "@/lib/account-journal";
 import { entryFeelings, formatDay, formatWhen, moodLabel } from "@/lib/format";
+import { openCamera, oppositeFacing, playCameraPreview, stopMediaStream } from "@/lib/camera";
+import type { CameraFacing } from "@/lib/camera";
 import { ImagePrepError, cameraErrorMessage, dataUrlToJpegBlob, imageFileToJpegBlob, videoFrameToDataUrl } from "@/lib/images";
 import { MOODS, REFLECTION_LIMIT } from "@/lib/types";
 import type { MoodId } from "@/lib/types";
@@ -543,8 +545,11 @@ function EntryFields({
   const streamRef = useRef<MediaStream | null>(null);
   const previewRef = useRef<string | null>(initial.previewUrl);
   const mountedRef = useRef(true);
+  const requestRef = useRef(0);
   const [draft, setDraft] = useState<Draft>(initial);
-  const [camera, setCamera] = useState<"off" | "starting" | "live">("off");
+  const [camera, setCamera] = useState<"off" | "starting" | "live" | "switching">("off");
+  const [facing, setFacing] = useState<CameraFacing>("user");
+  const [streamVersion, setStreamVersion] = useState(0);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
 
@@ -552,6 +557,7 @@ function EntryFields({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      requestRef.current += 1;
       releaseStream(streamRef, videoRef);
       revokePreview(previewRef.current);
     };
@@ -562,8 +568,17 @@ function EntryFields({
     const video = videoRef.current;
     const stream = streamRef.current;
     if (!video || !stream) return;
-    video.srcObject = stream;
-  }, [camera]);
+    let cancelled = false;
+    void playCameraPreview(video, stream).catch(() => {
+      if (cancelled || !mountedRef.current || streamRef.current !== stream) return;
+      releaseStream(streamRef, videoRef);
+      setCamera("off");
+      setError("The camera preview could not start. You can choose an image or skip.");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [camera, streamVersion]);
 
   function setPhoto(photo: Blob, previewUrl: string) {
     revokePreview(previewRef.current);
@@ -577,30 +592,89 @@ function EntryFields({
     setDraft((current) => ({ ...current, photo: null, previewUrl: null, skipPhoto: skip, removePhoto: skip }));
   }
 
-  async function startCamera() {
+  async function startCamera(nextFacing: CameraFacing = "user") {
     setError("");
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError("This browser cannot open a camera here. You can choose an image or skip.");
-      return;
-    }
     releaseStream(streamRef, videoRef);
+    const requestId = requestRef.current + 1;
+    requestRef.current = requestId;
     setCamera("starting");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      if (!mountedRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
+      const session = await openCamera(nextFacing);
+      if (!mountedRef.current || requestId !== requestRef.current) {
+        stopMediaStream(session.stream);
         return;
       }
-      streamRef.current = stream;
+      holdStream(session.stream);
+      streamRef.current = session.stream;
+      setFacing(session.facing);
+      setStreamVersion((version) => version + 1);
       setCamera("live");
     } catch (reason) {
+      if (!mountedRef.current || requestId !== requestRef.current) return;
       releaseStream(streamRef, videoRef);
       setCamera("off");
       setError(cameraErrorMessage(reason));
     }
   }
 
+  async function switchCamera() {
+    if (camera !== "live") return;
+    const nextFacing = oppositeFacing(facing);
+    const previousFacing = facing;
+    const avoidDeviceId = streamRef.current?.getVideoTracks()[0]?.getSettings().deviceId;
+    setError("");
+    releaseStream(streamRef, videoRef);
+    const requestId = requestRef.current + 1;
+    requestRef.current = requestId;
+    setCamera("switching");
+    try {
+      const session = await openCamera(nextFacing, { switching: true, avoidDeviceId });
+      if (!mountedRef.current || requestId !== requestRef.current) {
+        stopMediaStream(session.stream);
+        return;
+      }
+      holdStream(session.stream);
+      streamRef.current = session.stream;
+      setFacing(session.facing);
+      setStreamVersion((version) => version + 1);
+      setCamera("live");
+    } catch (reason) {
+      if (!mountedRef.current || requestId !== requestRef.current) return;
+      try {
+        const restored = await openCamera(previousFacing);
+        if (!mountedRef.current || requestId !== requestRef.current) {
+          stopMediaStream(restored.stream);
+          return;
+        }
+        holdStream(restored.stream);
+        streamRef.current = restored.stream;
+        setFacing(restored.facing);
+        setStreamVersion((version) => version + 1);
+        setCamera("live");
+        setError(cameraErrorMessage(reason));
+      } catch (restoreError) {
+        if (!mountedRef.current || requestId !== requestRef.current) return;
+        releaseStream(streamRef, videoRef);
+        setCamera("off");
+        setError(cameraErrorMessage(restoreError));
+      }
+    }
+  }
+
+  function holdStream(stream: MediaStream) {
+    stream.getVideoTracks().forEach((track) => {
+      track.onended = () => {
+        if (streamRef.current !== stream || !mountedRef.current) return;
+        streamRef.current = null;
+        if (videoRef.current) videoRef.current.srcObject = null;
+        setCamera("off");
+        setError("The camera stopped. Start it again if you still want a photo.");
+      };
+    });
+  }
+
   function stopCamera() {
+    requestRef.current += 1;
     releaseStream(streamRef, videoRef);
     setCamera("off");
   }
@@ -610,7 +684,7 @@ function EntryFields({
     if (!video) return;
     setError("");
     try {
-      const dataUrl = await videoFrameToDataUrl(video);
+      const dataUrl = await videoFrameToDataUrl(video, { mirror: facing === "user" });
       const photo = await dataUrlToJpegBlob(dataUrl);
       stopCamera();
       setPhoto(photo, dataUrl);
@@ -645,6 +719,7 @@ function EntryFields({
         setProgress("");
         return;
       }
+      requestRef.current += 1;
       releaseStream(streamRef, videoRef);
       setCamera("off");
       revokePreview(previewRef.current);
@@ -666,12 +741,34 @@ function EntryFields({
         <legend className="text-sm font-medium text-foreground">Photo</legend>
         <p className="text-sm text-muted">JPG, PNG, and other images up to 15 MB. The photo is resized before it is saved.</p>
         {camera === "starting" ? <p className="text-sm text-foreground">Asking for camera access…</p> : null}
-        {camera === "live" ? (
+        {camera === "live" || camera === "switching" ? (
           <div className="space-y-3">
-            <video ref={videoRef} autoPlay playsInline muted className="aspect-[4/3] w-full rounded-2xl bg-camera object-cover" />
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              aria-label={facing === "user" ? "Live front camera preview" : "Live rear camera preview"}
+              className="aspect-[4/3] w-full rounded-2xl bg-camera object-cover"
+              style={facing === "user" ? { transform: "scaleX(-1)" } : undefined}
+            />
+            {camera === "switching" ? (
+              <p className="text-sm text-foreground" role="status">
+                Switching camera…
+              </p>
+            ) : null}
             <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={() => void captureFrame()}>
+              <Button type="button" onClick={() => void captureFrame()} disabled={camera !== "live"}>
                 Capture photo
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void switchCamera()}
+                disabled={camera !== "live"}
+                aria-label={facing === "user" ? "Switch to the rear camera" : "Switch to the front camera"}
+              >
+                Switch camera
               </Button>
               <Button type="button" variant="secondary" onClick={stopCamera}>
                 Close camera
@@ -888,7 +985,7 @@ function revokePreview(url: string | null) {
 }
 
 function releaseStream(streamRef: { current: MediaStream | null }, videoRef: { current: HTMLVideoElement | null }) {
-  streamRef.current?.getTracks().forEach((track) => track.stop());
+  stopMediaStream(streamRef.current);
   streamRef.current = null;
   if (videoRef.current) videoRef.current.srcObject = null;
 }

@@ -71,12 +71,12 @@ export async function imageFileToJpegBlob(file: Blob): Promise<Blob> {
   }
 }
 
-export async function videoFrameToDataUrl(video: HTMLVideoElement): Promise<string> {
+export async function videoFrameToDataUrl(video: HTMLVideoElement, options?: { mirror?: boolean }): Promise<string> {
   if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0) {
     throw new ImagePrepError("The camera has not shared a frame yet. Wait a moment and try again.");
   }
 
-  const canvas = drawScaled(video, video.videoWidth, video.videoHeight);
+  const canvas = drawScaled(video, video.videoWidth, video.videoHeight, options?.mirror === true);
   const blob = await new Promise<Blob | null>((resolve) => {
     canvas.toBlob((next) => resolve(next), "image/jpeg", 0.85);
   });
@@ -86,7 +86,7 @@ export async function videoFrameToDataUrl(video: HTMLVideoElement): Promise<stri
   return imageFileToDataUrl(blob);
 }
 
-function drawScaled(source: CanvasImageSource, sourceWidth: number, sourceHeight: number): HTMLCanvasElement {
+function drawScaled(source: CanvasImageSource, sourceWidth: number, sourceHeight: number, mirror = false): HTMLCanvasElement {
   if (sourceWidth < 1 || sourceHeight < 1) {
     throw new ImagePrepError("This photo could not be prepared in the browser.");
   }
@@ -98,6 +98,10 @@ function drawScaled(source: CanvasImageSource, sourceWidth: number, sourceHeight
   const context = canvas.getContext("2d");
   if (!context) {
     throw new ImagePrepError("This photo could not be prepared in the browser.");
+  }
+  if (mirror) {
+    context.translate(canvas.width, 0);
+    context.scale(-1, 1);
   }
   context.drawImage(source, 0, 0, canvas.width, canvas.height);
   return canvas;
@@ -117,6 +121,7 @@ function canvasToDataUrl(canvas: HTMLCanvasElement): string {
 }
 
 export function cameraErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.name === "CameraOpenError") return error.message;
   if (typeof navigator !== "undefined" && !navigator.mediaDevices?.getUserMedia) {
     return "This browser cannot open a camera here. You can upload an image or skip.";
   }
