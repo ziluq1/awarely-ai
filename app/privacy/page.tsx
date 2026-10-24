@@ -47,8 +47,8 @@ export default function PrivacyPage() {
         <section className={`${cardClass} p-6`}>
           <h2 className="font-serif text-2xl text-foreground">Appearance</h2>
           <p className="mt-3 leading-relaxed text-muted">
-            Light or dark mode and the color theme are saved in this browser. On a first visit, awarely.ai follows the
-            device appearance until you choose otherwise in{" "}
+            Light or dark mode and the color theme are saved in this browser. A first visit matches this device once,
+            then keeps that choice until you change it in{" "}
             <Link className="font-medium text-accent-text underline decoration-line underline-offset-4" href="/settings">
               Settings
             </Link>
@@ -69,6 +69,15 @@ export default function PrivacyPage() {
             Saving an entry while you are signed in sends the words, mood, and photo to your Supabase project. The photo
             goes in a private bucket, and the row is tied to your user id. awarely.ai asks Supabase for a temporary link
             when it shows the photo. Other accounts cannot read those rows or files through the app policies.
+          </p>
+        </section>
+        <section className={`${cardClass} p-6`}>
+          <h2 className="font-serif text-2xl text-foreground">Friends and shared timelines</h2>
+          <p className="mt-3 leading-relaxed text-muted">
+            Sharing is off until you choose an entry and a timeline. A shared entry shows its photo, date, mood, and
+            reflection to current members of that timeline only. Search and profiles show the name, username, bio, and
+            photo someone chose to share. They do not show email addresses or private entries. Profile photos and shared
+            photos stay in private buckets. Friends are not a substitute for professional care.
           </p>
         </section>
         <section className={`${cardClass} p-6`}>

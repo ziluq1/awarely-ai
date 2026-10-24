@@ -3,7 +3,6 @@ export const APPEARANCE_EVENT = "mindmate-appearance";
 export const DEFAULT_ACCENT = "#7c6a9a";
 
 export const APPEARANCES = [
-  { id: "system", label: "System", detail: "Follow this device" },
   { id: "light", label: "Light", detail: "Bright paper" },
   { id: "dark", label: "Dark", detail: "Dim surroundings" },
 ] as const;
@@ -28,7 +27,7 @@ export type AppearancePreference = {
 };
 
 export const DEFAULT_PREFERENCE: AppearancePreference = {
-  appearance: "system",
+  appearance: "light",
   theme: "default",
   accent: DEFAULT_ACCENT,
 };
@@ -54,9 +53,7 @@ type TokenMap = Record<
 
 export function normalizePreference(value: unknown): AppearancePreference {
   const record = value && typeof value === "object" ? (value as Partial<AppearancePreference>) : {};
-  const appearance = APPEARANCES.some((item) => item.id === record.appearance)
-    ? (record.appearance as AppearanceChoice)
-    : "system";
+  const appearance = record.appearance === "dark" || record.appearance === "light" ? record.appearance : "light";
   const theme = THEMES.some((item) => item.id === record.theme) ? (record.theme as ThemeId) : "default";
   const accent = normalizeAccent(record.accent);
   return { appearance, theme, accent };
@@ -84,10 +81,8 @@ export function writePreference(preference: AppearancePreference): void {
   window.dispatchEvent(new Event(APPEARANCE_EVENT));
 }
 
-export function resolveMode(appearance: AppearanceChoice, systemDark: boolean): ColorMode {
-  if (appearance === "dark") return "dark";
-  if (appearance === "light") return "light";
-  return systemDark ? "dark" : "light";
+export function resolveMode(appearance: AppearanceChoice): ColorMode {
+  return appearance === "dark" ? "dark" : "light";
 }
 
 export function tokensFor(theme: string, mode: string, accent: string): TokenMap {
@@ -120,8 +115,7 @@ export function tokensFor(theme: string, mode: string, accent: string): TokenMap
 }
 
 export function applyAppearance(root: HTMLElement, preference: AppearancePreference): void {
-  const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const mode = resolveMode(preference.appearance, systemDark);
+  const mode = resolveMode(preference.appearance);
   const tokens = tokensFor(preference.theme, mode, preference.accent);
   root.dataset.appearance = preference.appearance;
   root.dataset.theme = preference.theme;
@@ -328,12 +322,19 @@ export const APPEARANCE_BOOT = `(function(){
   try {
     var raw = localStorage.getItem(${JSON.stringify(APPEARANCE_KEY)});
     var stored = raw ? JSON.parse(raw) : null;
-    var appearance = stored && (stored.appearance === "light" || stored.appearance === "dark") ? stored.appearance : "system";
+    var systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var appearance = stored && stored.appearance === "dark" ? "dark" : stored && stored.appearance === "light" ? "light" : (systemDark ? "dark" : "light");
+    if (!stored || stored.appearance !== appearance) {
+      var saved = stored && typeof stored === "object" ? stored : {};
+      saved.appearance = appearance;
+      if (!saved.theme) saved.theme = "default";
+      if (!saved.accent) saved.accent = ${JSON.stringify(DEFAULT_ACCENT)};
+      localStorage.setItem(${JSON.stringify(APPEARANCE_KEY)}, JSON.stringify(saved));
+    }
     var themes = ["default","cream","sage","lavender","ocean","custom"];
     var theme = stored && themes.indexOf(stored.theme) >= 0 ? stored.theme : "default";
     var accent = normalizeAccent(stored && stored.accent);
-    var systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    var mode = resolveMode(appearance, systemDark);
+    var mode = resolveMode(appearance);
     var tokens = tokensFor(theme, mode, accent);
     var root = document.documentElement;
     root.dataset.appearance = appearance;

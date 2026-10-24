@@ -9,7 +9,6 @@ import {
   DEFAULT_ACCENT,
   THEMES,
   normalizeAccent,
-  resolveMode,
   tokensFor,
   writePreference,
 } from "@/lib/appearance";
@@ -18,8 +17,8 @@ import type { AppearanceChoice, ThemeId } from "@/lib/appearance";
 export function ThemeSettings() {
   const appearanceName = useId();
   const themeName = useId();
-  const { preference, systemDark } = useAppearance();
-  const mode = resolveMode(preference.appearance, systemDark);
+  const { preference } = useAppearance();
+  const mode = preference.appearance;
 
   function update(next: Partial<{ appearance: AppearanceChoice; theme: ThemeId; accent: string }>) {
     writePreference({ ...preference, ...next });
@@ -29,8 +28,7 @@ export function ThemeSettings() {
     <div className="space-y-10">
       <PageHeader eyebrow="Settings" title="Appearance">
         <p>
-          On a first visit, awarely.ai follows this device. Light and dark choices, and the color theme, stay in this
-          browser until you change them. They are not uploaded.
+          Light or dark, and the color theme, stay in this browser until you change them. They are not uploaded.
         </p>
       </PageHeader>
 
@@ -39,9 +37,9 @@ export function ThemeSettings() {
           Light and dark
         </h2>
         <p className="mt-2 leading-relaxed text-muted">
-          Showing {mode} mode{preference.appearance === "system" ? ", from this device" : ", chosen here"}.
+          Showing {mode} mode, chosen here.
         </p>
-        <div className="mt-5 grid gap-3 sm:grid-cols-3" role="radiogroup" aria-labelledby="appearance-heading">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2" role="radiogroup" aria-labelledby="appearance-heading">
           {APPEARANCES.map((option) => {
             const selected = preference.appearance === option.id;
             return (

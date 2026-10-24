@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { AuthControls } from "@/components/auth-controls";
+import { useAuth } from "@/components/auth-provider";
 import { NAV } from "@/lib/nav";
+import { unreadCount } from "@/lib/social";
 
 export function SiteHeader() {
   const pathname = usePathname();
@@ -22,15 +25,18 @@ function AppNav({ pathname }: { pathname: string | null }) {
         <AuthControls />
         <nav aria-label="Primary" className="flex flex-col gap-1">
           {NAV.map((item) => (
-            <NavLink key={item.href} href={item.href} label={item.label} current={pathname === item.href} />
+            <NavLink key={item.href} href={item.href} label={item.label} current={isCurrent(pathname, item.href)} />
           ))}
+          <NavLink href="/shared" label="Shared" current={isCurrent(pathname, "/shared")} />
+          <AlertsLink pathname={pathname} current={isCurrent(pathname, "/notifications")} />
           <NavLink href="/settings" label="Settings" current={pathname === "/settings"} />
         </nav>
       </aside>
       <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-b border-line/80 bg-background/90 px-3 py-2 backdrop-blur-md md:hidden">
         <Brand compact />
-        <div className="ml-auto flex w-full items-center justify-end gap-1 min-[430px]:w-auto">
+        <div className="ml-auto flex w-full items-center justify-end gap-2 min-[430px]:w-auto">
           <AuthControls compact />
+          <AlertsLink pathname={pathname} current={isCurrent(pathname, "/notifications")} toolbar />
           <NavLink href="/settings" label="Settings" current={pathname === "/settings"} toolbar />
         </div>
       </div>
@@ -40,11 +46,49 @@ function AppNav({ pathname }: { pathname: string | null }) {
         style={{ paddingBottom: "max(0.4rem, env(safe-area-inset-bottom))" }}
       >
         {NAV.map((item) => (
-          <NavLink key={item.href} href={item.href} label={item.label} current={pathname === item.href} compact />
+          <NavLink key={item.href} href={item.href} label={item.short} current={isCurrent(pathname, item.href)} compact />
         ))}
       </nav>
     </>
   );
+}
+
+function isCurrent(pathname: string | null, href: string) {
+  if (!pathname) return false;
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function AlertsLink({
+  current,
+  pathname,
+  toolbar = false,
+}: {
+  current: boolean;
+  pathname: string | null;
+  toolbar?: boolean;
+}) {
+  const { status } = useAuth();
+  const [count, setCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (status !== "signed-in") return;
+    let alive = true;
+    function load() {
+      void unreadCount().then((value) => {
+        if (alive) setCount(value);
+      });
+    }
+    load();
+    window.addEventListener("awarely-notifications", load);
+    return () => {
+      alive = false;
+      window.removeEventListener("awarely-notifications", load);
+    };
+  }, [pathname, status]);
+
+  const label = count ? `Alerts (${count})` : "Alerts";
+  return <NavLink href="/notifications" label={label} current={current} toolbar={toolbar} />;
 }
 
 function Brand({ compact = false }: { compact?: boolean }) {

@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { CustomFeelingField } from "@/components/custom-feeling";
+import { ShareEntryButton } from "@/components/share-entry-button";
 import { Button, EmptyBlock, ErrorBlock, LoadingBlock, buttonClass, cardClass, fieldClass } from "@/components/ui";
 import {
   createAccountEntry,
@@ -51,9 +52,6 @@ export function AccountTimeline() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<AccountEntry | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AccountEntry | null>(null);
-  const [prompt, setPrompt] = useState("");
-  const [promptSource, setPromptSource] = useState("");
-  const [promptLoading, setPromptLoading] = useState(true);
 
   async function refresh() {
     if (auth.status !== "signed-in") {
@@ -104,26 +102,6 @@ export function AccountTimeline() {
       current = false;
     };
   }, [auth.status, auth.user?.id]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/journal-prompt", { signal: controller.signal })
-      .then(async (response) => {
-        const body: unknown = await response.json();
-        if (!response.ok || !isPrompt(body)) throw new Error("prompt");
-        setPrompt(body.prompt);
-        setPromptSource(body.source);
-      })
-      .catch((reason: unknown) => {
-        if (isAbort(reason)) return;
-        setPrompt("What is one small thing from today that you want to remember?");
-        setPromptSource("fallback");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setPromptLoading(false);
-      });
-    return () => controller.abort();
-  }, []);
 
   useEffect(() => {
     if (!highlightedId) return;
@@ -289,27 +267,7 @@ export function AccountTimeline() {
         </>
       ) : null}
 
-      <section id="capture-moment" className="space-y-4 scroll-mt-24">
-        <PromptLine
-          prompt={prompt}
-          source={promptSource}
-          loading={promptLoading}
-          onRefresh={() => {
-            setPromptLoading(true);
-            void fetch("/api/journal-prompt")
-              .then(async (response) => {
-                const body: unknown = await response.json();
-                if (!isPrompt(body)) throw new Error("prompt");
-                setPrompt(body.prompt);
-                setPromptSource(body.source);
-              })
-              .catch(() => {
-                setPrompt("Which ordinary detail around you feels worth keeping?");
-                setPromptSource("fallback");
-              })
-              .finally(() => setPromptLoading(false));
-          }}
-        />
+      <section id="capture-moment" className="scroll-mt-24">
         <CaptureForm signedIn={auth.status === "signed-in"} onSaved={saved} />
       </section>
 
@@ -384,6 +342,7 @@ function EntryArticle({
           ) : null}
           <p className="journal-text text-lg leading-relaxed text-foreground">{entry.journalText}</p>
           <div className="flex flex-wrap gap-2">
+            <ShareEntryButton entryId={entry.id} />
             <Button variant="secondary" onClick={() => setEditing(true)}>
               Edit entry
             </Button>
@@ -889,35 +848,6 @@ function ConfirmDelete({
   );
 }
 
-function PromptLine({
-  prompt,
-  source,
-  loading,
-  onRefresh,
-}: {
-  prompt: string;
-  source: string;
-  loading: boolean;
-  onRefresh: () => void;
-}) {
-  return (
-    <div className="rounded-[1.75rem] bg-sage px-5 py-4 text-sage-text">
-      <p className="text-xs font-medium uppercase tracking-[0.16em]">A prompt for this moment</p>
-      <p className="mt-2 font-serif text-2xl leading-snug" role="status">
-        {loading ? "Finding a prompt…" : prompt}
-      </p>
-      {loading ? null : (
-        <p className="mt-2 text-sm">
-          {source === "fallback" ? "A prepared prompt, because the model is not replying." : "A short prompt from the companion model."}
-        </p>
-      )}
-      <Button variant="secondary" className="mt-3" onClick={onRefresh} disabled={loading}>
-        {loading ? "Asking…" : "Another prompt"}
-      </Button>
-    </div>
-  );
-}
-
 function MoodButton({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: string }) {
   return (
     <button
@@ -961,14 +891,4 @@ function releaseStream(streamRef: { current: MediaStream | null }, videoRef: { c
   streamRef.current?.getTracks().forEach((track) => track.stop());
   streamRef.current = null;
   if (videoRef.current) videoRef.current.srcObject = null;
-}
-
-function isPrompt(value: unknown): value is { prompt: string; source: string } {
-  if (!value || typeof value !== "object") return false;
-  const body = value as { prompt?: unknown; source?: unknown };
-  return typeof body.prompt === "string" && body.prompt.length > 0 && typeof body.source === "string";
-}
-
-function isAbort(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
 }

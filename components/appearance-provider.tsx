@@ -19,12 +19,9 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   return children;
 }
 
-export function useAppearance(): { preference: AppearancePreference; systemDark: boolean } {
+export function useAppearance(): { preference: AppearancePreference } {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  return {
-    preference: preferenceFromSnapshot(snapshot),
-    systemDark: snapshot.startsWith("dark|"),
-  };
+  return { preference: preferenceFromSnapshot(snapshot) };
 }
 
 function subscribe(onChange: () => void): () => void {
@@ -33,30 +30,24 @@ function subscribe(onChange: () => void): () => void {
   };
   window.addEventListener("storage", onStorage);
   window.addEventListener(APPEARANCE_EVENT, onChange);
-  const media = window.matchMedia("(prefers-color-scheme: dark)");
-  media.addEventListener("change", onChange);
   return () => {
     window.removeEventListener("storage", onStorage);
     window.removeEventListener(APPEARANCE_EVENT, onChange);
-    media.removeEventListener("change", onChange);
   };
 }
 
 function getSnapshot(): string {
-  const stored = localStorage.getItem(APPEARANCE_KEY) ?? "";
-  const system = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  return `${system}|${stored}`;
+  return localStorage.getItem(APPEARANCE_KEY) ?? "";
 }
 
 function getServerSnapshot(): string {
-  return "light|";
+  return "";
 }
 
 function preferenceFromSnapshot(snapshot: string): AppearancePreference {
-  const stored = snapshot.slice(snapshot.indexOf("|") + 1);
-  if (!stored) return normalizePreference(null);
+  if (!snapshot) return normalizePreference(null);
   try {
-    return normalizePreference(JSON.parse(stored));
+    return normalizePreference(JSON.parse(snapshot));
   } catch {
     return normalizePreference(null);
   }

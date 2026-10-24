@@ -22,6 +22,12 @@ export function SiteFooter() {
           <Link className="font-medium text-accent-text underline decoration-line underline-offset-4" href="/timeline">
             Timeline
           </Link>
+          <Link className="font-medium text-accent-text underline decoration-line underline-offset-4" href="/friends">
+            Friends
+          </Link>
+          <Link className="font-medium text-accent-text underline decoration-line underline-offset-4" href="/shared">
+            Shared timelines
+          </Link>
           <Link className="font-medium text-accent-text underline decoration-line underline-offset-4" href="/companion">
             AI Companion
           </Link>
