@@ -32,6 +32,14 @@ export async function imageFileToDataUrl(file: Blob): Promise<string> {
   }
 }
 
+export async function dataUrlToJpegBlob(dataUrl: string): Promise<Blob> {
+  if (!dataUrl.startsWith("data:image/")) {
+    throw new ImagePrepError("This photo could not be prepared in the browser.");
+  }
+  const response = await fetch(dataUrl);
+  return imageFileToJpegBlob(await response.blob());
+}
+
 export async function imageFileToJpegBlob(file: Blob): Promise<Blob> {
   if (file instanceof File) {
     if (file.type && !file.type.startsWith("image/")) {

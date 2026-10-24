@@ -1,8 +1,10 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Private photo links expire, so these images stay on a plain img. */
+
 import Link from "next/link";
-import { useEffect, useId, useState } from "react";
-import type { FormEvent } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { CustomFeelingField } from "@/components/custom-feeling";
 import { Button, EmptyBlock, ErrorBlock, LoadingBlock, buttonClass, cardClass, fieldClass } from "@/components/ui";
@@ -13,8 +15,8 @@ import {
   updateAccountEntry,
 } from "@/lib/account-journal";
 import type { AccountEntry } from "@/lib/account-journal";
-import { entryFeelings, formatWhen } from "@/lib/format";
-import { ImagePrepError, imageFileToJpegBlob } from "@/lib/images";
+import { entryFeelings, formatDay, formatWhen, moodLabel } from "@/lib/format";
+import { ImagePrepError, cameraErrorMessage, dataUrlToJpegBlob, imageFileToJpegBlob, videoFrameToDataUrl } from "@/lib/images";
 import { MOODS, REFLECTION_LIMIT } from "@/lib/types";
 import type { MoodId } from "@/lib/types";
 
@@ -22,22 +24,32 @@ type Draft = {
   text: string;
   mood: MoodId | null;
   custom: string | null;
-  file: File | null;
+  photo: Blob | null;
+  previewUrl: string | null;
   skipPhoto: boolean;
   removePhoto: boolean;
 };
 
-const emptyDraft: Draft = { text: "", mood: null, custom: null, file: null, skipPhoto: false, removePhoto: false };
+const emptyDraft: Draft = {
+  text: "",
+  mood: null,
+  custom: null,
+  photo: null,
+  previewUrl: null,
+  skipPhoto: false,
+  removePhoto: false,
+};
 
 export function AccountTimeline() {
   const auth = useAuth();
   const [entries, setEntries] = useState<AccountEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [photoMessage, setPhotoMessage] = useState("");
   const [moodFilter, setMoodFilter] = useState<MoodId | "all">("all");
   const [dateFilter, setDateFilter] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<AccountEntry | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AccountEntry | null>(null);
   const [prompt, setPrompt] = useState("");
   const [promptSource, setPromptSource] = useState("");
@@ -55,10 +67,12 @@ export function AccountTimeline() {
     if (!result.ok) {
       setError(result.message);
       setEntries([]);
+      setPhotoMessage("");
       return;
     }
     setError("");
-    setEntries(result.value);
+    setEntries(result.value.entries);
+    setPhotoMessage(result.value.photoMessage ?? "");
   }
 
   useEffect(() => {
@@ -69,6 +83,7 @@ export function AccountTimeline() {
         if (!current) return;
         setEntries([]);
         setLoading(false);
+        setPhotoMessage("");
         return;
       }
       setLoading(true);
@@ -78,10 +93,12 @@ export function AccountTimeline() {
       if (!result.ok) {
         setError(result.message);
         setEntries([]);
+        setPhotoMessage("");
         return;
       }
       setError("");
-      setEntries(result.value);
+      setEntries(result.value.entries);
+      setPhotoMessage(result.value.photoMessage ?? "");
     })();
     return () => {
       current = false;
@@ -90,7 +107,6 @@ export function AccountTimeline() {
 
   useEffect(() => {
     const controller = new AbortController();
-    setPromptLoading(true);
     fetch("/api/journal-prompt", { signal: controller.signal })
       .then(async (response) => {
         const body: unknown = await response.json();
@@ -109,18 +125,29 @@ export function AccountTimeline() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    if (!highlightedId) return;
+    const timer = window.setTimeout(() => setHighlightedId(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [highlightedId]);
+
   const visible = entries.filter((entry) => {
     if (moodFilter !== "all" && entry.mood !== moodFilter) return false;
     if (!dateFilter) return true;
     return localDay(entry.createdAt) === dateFilter;
   });
-  const selected = entries.find((entry) => entry.id === selectedId) ?? null;
+  const photos = visible.filter((entry) => entry.photoUrl);
+  const showTimeline = auth.status === "signed-in" && !loading && !error && entries.length > 0;
 
   function saved(entry: AccountEntry) {
     setEntries((current) => [entry, ...current.filter((item) => item.id !== entry.id)].sort(newestFirst));
-    setSelectedId(entry.id);
-    setEditing(false);
     setError("");
+    window.setTimeout(() => focusEntry(entry.id), 50);
+  }
+
+  function focusEntry(id: string) {
+    setHighlightedId(id);
+    document.getElementById(`entry-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   return (
@@ -130,8 +157,8 @@ export function AccountTimeline() {
           <p className="text-sm font-medium uppercase tracking-[0.18em] text-accent-text">Timeline</p>
           <h1 className="mt-3 font-serif text-4xl text-foreground sm:text-5xl">Your Timeline</h1>
           <p className="mt-3 max-w-2xl leading-relaxed text-muted">
-            Moments you save here stay with your account. Newest entries are first. Photos are stored privately and shown
-            with a temporary link.
+            Moments you save here stay with your account. Newest entries are first. Photos stay private and open through a
+            temporary link.
           </p>
         </div>
         <a href="#capture-moment" className={buttonClass("primary")}>
@@ -173,83 +200,252 @@ export function AccountTimeline() {
         </EmptyBlock>
       ) : null}
 
-      {auth.status === "signed-in" && entries.length > 0 ? (
-        <section aria-labelledby="saved-moments" className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <h2 id="saved-moments" className="font-serif text-3xl text-foreground">
-              Saved moments
-            </h2>
-            <p className="text-sm text-muted">
-              {visible.length} of {entries.length} shown
-            </p>
-          </div>
-          <Filters mood={moodFilter} date={dateFilter} onMood={setMoodFilter} onDate={setDateFilter} onClear={() => {
-            setMoodFilter("all");
-            setDateFilter("");
-          }} />
-          {visible.length === 0 ? (
-            <p className="rounded-2xl bg-accent px-4 py-3 text-sm text-accent-text" role="status">
-              No entries match those filters.
-            </p>
-          ) : (
-            <ul className="grid gap-4 min-[600px]:grid-cols-2">
-              {visible.map((entry) => (
-                <li key={entry.id}>
-                  <EntryCard entry={entry} onOpen={() => { setSelectedId(entry.id); setEditing(false); }} />
-                </li>
-              ))}
-            </ul>
-          )}
-          {selected ? (
-            <EntryDetail
-              entry={selected}
-              editing={editing}
-              onEdit={() => setEditing(true)}
-              onClose={() => { setSelectedId(null); setEditing(false); }}
-              onCancelEdit={() => setEditing(false)}
-              onSaved={saved}
-              onAskDelete={() => setPendingDelete(selected)}
-            />
+      {showTimeline ? (
+        <>
+          {photoMessage ? (
+            <ErrorBlock title="A photo could not be opened" message={photoMessage}>
+              <Button onClick={() => void refresh()}>Try again</Button>
+            </ErrorBlock>
           ) : null}
-        </section>
+          <section aria-labelledby="photo-timeline" className="space-y-4">
+            <h2 id="photo-timeline" className="font-serif text-3xl text-foreground">
+              Photos
+            </h2>
+            {photos.length === 0 ? (
+              <p className="rounded-2xl bg-accent px-4 py-3 text-sm text-accent-text" role="status">
+                No photos in this view. Written entries are below.
+              </p>
+            ) : (
+              <ul className="grid grid-cols-2 gap-3 min-[600px]:grid-cols-3 lg:grid-cols-4">
+                {photos.map((entry) => (
+                  <li key={entry.id}>
+                    <button
+                      type="button"
+                      onClick={() => focusEntry(entry.id)}
+                      className="block w-full overflow-hidden rounded-2xl text-left outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-text"
+                      aria-label={`Go to the entry from ${formatDay(entry.createdAt)}, ${moodMark(entry)}`}
+                    >
+                      <span className="relative block">
+                        <img
+                          src={entry.photoUrl ?? ""}
+                          alt=""
+                          className="aspect-square w-full bg-camera object-cover"
+                        />
+                        <span className="absolute inset-x-2 bottom-2 flex items-end justify-between gap-2">
+                          <span className="rounded-full bg-card/90 px-2 py-1 text-xs font-medium text-foreground">
+                            {formatDay(entry.createdAt)}
+                          </span>
+                          <span className="rounded-full bg-card/90 px-2 py-1 text-xs font-medium text-foreground">
+                            {moodMark(entry)}
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section aria-labelledby="written-timeline" className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <h2 id="written-timeline" className="font-serif text-3xl text-foreground">
+                Journal
+              </h2>
+              <p className="text-sm text-muted">
+                {visible.length} of {entries.length} shown
+              </p>
+            </div>
+            <Filters
+              mood={moodFilter}
+              date={dateFilter}
+              onMood={setMoodFilter}
+              onDate={setDateFilter}
+              onClear={() => {
+                setMoodFilter("all");
+                setDateFilter("");
+              }}
+            />
+            {visible.length === 0 ? (
+              <p className="rounded-2xl bg-accent px-4 py-3 text-sm text-accent-text" role="status">
+                No entries match those filters.
+              </p>
+            ) : (
+              <ol className="space-y-4">
+                {visible.map((entry) => (
+                  <li key={entry.id}>
+                    <EntryArticle
+                      entry={entry}
+                      highlighted={highlightedId === entry.id}
+                      onSaved={saved}
+                      onOpenPhoto={setLightbox}
+                      onAskDelete={() => setPendingDelete(entry)}
+                    />
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        </>
       ) : null}
 
       <section id="capture-moment" className="space-y-4 scroll-mt-24">
-        <PromptLine prompt={prompt} source={promptSource} loading={promptLoading} onRefresh={() => {
-          setPromptLoading(true);
-          void fetch("/api/journal-prompt")
-            .then(async (response) => {
-              const body: unknown = await response.json();
-              if (!isPrompt(body)) throw new Error("prompt");
-              setPrompt(body.prompt);
-              setPromptSource(body.source);
-            })
-            .catch(() => {
-              setPrompt("Which ordinary detail around you feels worth keeping?");
-              setPromptSource("fallback");
-            })
-            .finally(() => setPromptLoading(false));
-        }} />
-        <CaptureForm
-          signedIn={auth.status === "signed-in"}
-          onSaved={(entry) => {
-            saved(entry);
-            document.getElementById("saved-moments")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        <PromptLine
+          prompt={prompt}
+          source={promptSource}
+          loading={promptLoading}
+          onRefresh={() => {
+            setPromptLoading(true);
+            void fetch("/api/journal-prompt")
+              .then(async (response) => {
+                const body: unknown = await response.json();
+                if (!isPrompt(body)) throw new Error("prompt");
+                setPrompt(body.prompt);
+                setPromptSource(body.source);
+              })
+              .catch(() => {
+                setPrompt("Which ordinary detail around you feels worth keeping?");
+                setPromptSource("fallback");
+              })
+              .finally(() => setPromptLoading(false));
           }}
         />
+        <CaptureForm signedIn={auth.status === "signed-in"} onSaved={saved} />
       </section>
 
+      {lightbox?.photoUrl ? <Lightbox entry={lightbox} onClose={() => setLightbox(null)} /> : null}
       {pendingDelete ? (
         <ConfirmDelete
           entry={pendingDelete}
           onCancel={() => setPendingDelete(null)}
           onDeleted={() => {
             setEntries((current) => current.filter((item) => item.id !== pendingDelete.id));
-            if (selectedId === pendingDelete.id) setSelectedId(null);
+            if (lightbox?.id === pendingDelete.id) setLightbox(null);
             setPendingDelete(null);
           }}
         />
       ) : null}
+    </div>
+  );
+}
+
+function EntryArticle({
+  entry,
+  highlighted,
+  onSaved,
+  onOpenPhoto,
+  onAskDelete,
+}: {
+  entry: AccountEntry;
+  highlighted: boolean;
+  onSaved: (entry: AccountEntry) => void;
+  onOpenPhoto: (entry: AccountEntry) => void;
+  onAskDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  return (
+    <article
+      id={`entry-${entry.id}`}
+      aria-labelledby={`entry-title-${entry.id}`}
+      className={`${cardClass} scroll-mt-28 p-5 sm:p-6 ${highlighted ? "ring-2 ring-accent-text ring-offset-2 ring-offset-background" : ""}`}
+    >
+      {editing ? (
+        <EntryEditor
+          entry={entry}
+          onCancel={() => setEditing(false)}
+          onSaved={(next) => {
+            setEditing(false);
+            onSaved(next);
+          }}
+        />
+      ) : (
+        <div className="space-y-4">
+          <h3 id={`entry-title-${entry.id}`} className="font-serif text-2xl text-foreground sm:text-3xl">
+            {formatWhen(entry.createdAt)}
+          </h3>
+          <p className="text-sm text-muted">{entryFeelings(entry.mood, entry.customFeeling)}</p>
+          {entry.photoUrl ? (
+            <button
+              type="button"
+              onClick={() => onOpenPhoto(entry)}
+              className="block w-full overflow-hidden rounded-2xl outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-text"
+              aria-label={`View the photo from ${formatWhen(entry.createdAt)}`}
+            >
+              <img
+                src={entry.photoUrl}
+                alt=""
+                className="max-h-80 w-full bg-camera object-cover"
+              />
+            </button>
+          ) : entry.photoPath ? (
+            <p className="rounded-2xl bg-accent px-4 py-3 text-sm text-accent-text" role="status">
+              This photo is saved, but its private link could not be opened.
+            </p>
+          ) : null}
+          <p className="journal-text text-lg leading-relaxed text-foreground">{entry.journalText}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => setEditing(true)}>
+              Edit entry
+            </Button>
+            <Button variant="danger" onClick={onAskDelete}>
+              Delete entry
+            </Button>
+          </div>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function Lightbox({ entry, onClose }: { entry: AccountEntry; onClose: () => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onCloseRef.current();
+      if (event.key === "Tab") {
+        event.preventDefault();
+        closeRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  if (!entry.photoUrl) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4" role="presentation" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full max-w-4xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 id={titleId} className="font-serif text-2xl text-white">
+            {formatWhen(entry.createdAt)}
+          </h2>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            className="min-h-11 rounded-full bg-white px-4 text-sm font-medium text-black"
+          >
+            Close
+          </button>
+        </div>
+        <img src={entry.photoUrl} alt={`Photo from ${formatWhen(entry.createdAt)}`} className="max-h-[75vh] w-full rounded-2xl object-contain" />
+      </div>
     </div>
   );
 }
@@ -271,11 +467,7 @@ function Filters({
     <div className={`${cardClass} grid gap-3 p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end`}>
       <label className="text-sm font-medium text-foreground">
         Mood
-        <select
-          value={mood}
-          onChange={(event) => onMood(moodChoice(event.target.value))}
-          className={`${fieldClass} mt-2`}
-        >
+        <select value={mood} onChange={(event) => onMood(moodChoice(event.target.value))} className={`${fieldClass} mt-2`}>
           <option value="all">All moods</option>
           {MOODS.map((item) => (
             <option key={item.id} value={item.id}>
@@ -295,66 +487,6 @@ function Filters({
   );
 }
 
-function EntryCard({ entry, onOpen }: { entry: AccountEntry; onOpen: () => void }) {
-  return (
-    <article className={`${cardClass} overflow-hidden p-4`}>
-      <Photo entry={entry} />
-      <h3 className="mt-4 font-serif text-2xl text-foreground">{formatWhen(entry.createdAt)}</h3>
-      <p className="mt-2 text-sm text-muted">{entryFeelings(entry.mood, entry.customFeeling)}</p>
-      <p className="journal-text mt-3 line-clamp-4 leading-relaxed text-foreground">{entry.journalText}</p>
-      <Button variant="secondary" className="mt-4" onClick={onOpen}>
-        Open entry
-      </Button>
-    </article>
-  );
-}
-
-function EntryDetail({
-  entry,
-  editing,
-  onEdit,
-  onClose,
-  onCancelEdit,
-  onSaved,
-  onAskDelete,
-}: {
-  entry: AccountEntry;
-  editing: boolean;
-  onEdit: () => void;
-  onClose: () => void;
-  onCancelEdit: () => void;
-  onSaved: (entry: AccountEntry) => void;
-  onAskDelete: () => void;
-}) {
-  return (
-    <section aria-labelledby="entry-detail" className={`${cardClass} p-5 sm:p-6`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <h2 id="entry-detail" className="font-serif text-3xl text-foreground">
-          {formatWhen(entry.createdAt)}
-        </h2>
-        <Button variant="quiet" onClick={onClose}>
-          Close
-        </Button>
-      </div>
-      {editing ? (
-        <EntryEditor entry={entry} onCancel={onCancelEdit} onSaved={onSaved} />
-      ) : (
-        <div className="mt-4 space-y-4">
-          <Photo entry={entry} />
-          <p className="text-sm text-muted">{entryFeelings(entry.mood, entry.customFeeling)}</p>
-          <p className="journal-text text-lg leading-relaxed text-foreground">{entry.journalText}</p>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={onEdit}>Edit entry</Button>
-            <Button variant="danger" onClick={onAskDelete}>
-              Delete entry
-            </Button>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
 function EntryEditor({
   entry,
   onCancel,
@@ -370,25 +502,25 @@ function EntryEditor({
         text: entry.journalText,
         mood: entry.mood,
         custom: entry.customFeeling,
-        file: null,
+        photo: null,
+        previewUrl: null,
         skipPhoto: !entry.photoPath,
         removePhoto: false,
       }}
       existing={entry}
       submitLabel="Save changes"
       onCancel={onCancel}
-      onSubmit={async (draft, onProgress) => {
-        const photo = draft.file ? await imageFileToJpegBlob(draft.file) : null;
-        return updateAccountEntry({
+      onSubmit={async (draft, onProgress) =>
+        updateAccountEntry({
           entry,
           journalText: draft.text,
           mood: draft.mood,
           customFeeling: draft.custom,
-          photo,
-          removePhoto: draft.removePhoto && !draft.file,
+          photo: draft.photo,
+          removePhoto: draft.removePhoto && !draft.photo,
           onProgress,
-        });
-      }}
+        })
+      }
       onSaved={onSaved}
     />
   );
@@ -399,8 +531,8 @@ function CaptureForm({ signedIn, onSaved }: { signedIn: boolean; onSaved: (entry
     <div className={`${cardClass} p-5 sm:p-8`}>
       <h2 className="font-serif text-3xl text-foreground">Capture This Moment</h2>
       <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
-        Add a photo or skip it, write what stands out, and choose a mood if you want one. The date and time are saved
-        for you.
+        Take a photo or choose one, look at it, then write what stands out. You can also skip the photo. The date and time
+        are saved for you.
       </p>
       {signedIn ? null : (
         <p className="mt-4 text-sm text-muted">
@@ -415,15 +547,14 @@ function CaptureForm({ signedIn, onSaved }: { signedIn: boolean; onSaved: (entry
         existing={null}
         submitLabel="Save Entry"
         onSubmit={async (draft, onProgress) => {
-          if (!draft.file && !draft.skipPhoto) {
+          if (!draft.photo && !draft.skipPhoto) {
             return { ok: false, message: "Add a photo, or choose Skip photo." };
           }
-          const photo = draft.file ? await imageFileToJpegBlob(draft.file) : null;
           return createAccountEntry({
             journalText: draft.text,
             mood: draft.mood,
             customFeeling: draft.custom,
-            photo,
+            photo: draft.photo,
             onProgress,
           });
         }}
@@ -449,9 +580,99 @@ function EntryFields({
   onSaved: (entry: AccountEntry) => void;
 }) {
   const fieldId = useId();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const previewRef = useRef<string | null>(initial.previewUrl);
+  const mountedRef = useRef(true);
   const [draft, setDraft] = useState<Draft>(initial);
+  const [camera, setCamera] = useState<"off" | "starting" | "live">("off");
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      releaseStream(streamRef, videoRef);
+      revokePreview(previewRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (camera !== "live") return;
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!video || !stream) return;
+    video.srcObject = stream;
+  }, [camera]);
+
+  function setPhoto(photo: Blob, previewUrl: string) {
+    revokePreview(previewRef.current);
+    previewRef.current = previewUrl;
+    setDraft((current) => ({ ...current, photo, previewUrl, skipPhoto: false, removePhoto: false }));
+  }
+
+  function clearPhoto(skip: boolean) {
+    revokePreview(previewRef.current);
+    previewRef.current = null;
+    setDraft((current) => ({ ...current, photo: null, previewUrl: null, skipPhoto: skip, removePhoto: skip }));
+  }
+
+  async function startCamera() {
+    setError("");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("This browser cannot open a camera here. You can choose an image or skip.");
+      return;
+    }
+    releaseStream(streamRef, videoRef);
+    setCamera("starting");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      if (!mountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      streamRef.current = stream;
+      setCamera("live");
+    } catch (reason) {
+      releaseStream(streamRef, videoRef);
+      setCamera("off");
+      setError(cameraErrorMessage(reason));
+    }
+  }
+
+  function stopCamera() {
+    releaseStream(streamRef, videoRef);
+    setCamera("off");
+  }
+
+  async function captureFrame() {
+    const video = videoRef.current;
+    if (!video) return;
+    setError("");
+    try {
+      const dataUrl = await videoFrameToDataUrl(video);
+      const photo = await dataUrlToJpegBlob(dataUrl);
+      stopCamera();
+      setPhoto(photo, dataUrl);
+    } catch (reason) {
+      setError(reason instanceof ImagePrepError ? reason.message : "This photo could not be prepared.");
+    }
+  }
+
+  async function onFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!file) return;
+    setError("");
+    stopCamera();
+    try {
+      const photo = await imageFileToJpegBlob(file);
+      setPhoto(photo, URL.createObjectURL(photo));
+    } catch (reason) {
+      setError(reason instanceof ImagePrepError ? reason.message : "That photo could not be prepared. Try another image.");
+    }
+  }
 
   async function onFormSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -465,9 +686,12 @@ function EntryFields({
         setProgress("");
         return;
       }
-      setProgress("");
-      event.currentTarget.reset();
+      releaseStream(streamRef, videoRef);
+      setCamera("off");
+      revokePreview(previewRef.current);
+      previewRef.current = null;
       setDraft(emptyDraft);
+      setProgress("");
       onSaved(result.value);
     } catch (reason) {
       setProgress("");
@@ -475,34 +699,55 @@ function EntryFields({
     }
   }
 
+  const currentPhoto = draft.previewUrl ?? (existing?.photoUrl && !draft.removePhoto ? existing.photoUrl : null);
+
   return (
     <form className="mt-5 space-y-4" onSubmit={(event) => void onFormSubmit(event)}>
-      <div>
-        <label htmlFor={`${fieldId}-photo`} className="text-sm font-medium text-foreground">
-          Photo
-        </label>
-        <input
-          id={`${fieldId}-photo`}
-          type="file"
-          accept="image/*"
-          className={`${fieldClass} mt-2`}
-          onChange={(event) => {
-            const file = event.target.files?.[0] ?? null;
-            setDraft((current) => ({ ...current, file, skipPhoto: false, removePhoto: false }));
-          }}
-        />
-        <label className="mt-3 flex min-h-11 items-center gap-2 text-sm text-foreground">
+      <fieldset className="space-y-3">
+        <legend className="text-sm font-medium text-foreground">Photo</legend>
+        <p className="text-sm text-muted">JPG, PNG, and other images up to 15 MB. The photo is resized before it is saved.</p>
+        {camera === "starting" ? <p className="text-sm text-foreground">Asking for camera access…</p> : null}
+        {camera === "live" ? (
+          <div className="space-y-3">
+            <video ref={videoRef} autoPlay playsInline muted className="aspect-[4/3] w-full rounded-2xl bg-camera object-cover" />
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={() => void captureFrame()}>
+                Capture photo
+              </Button>
+              <Button type="button" variant="secondary" onClick={stopCamera}>
+                Close camera
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={() => void startCamera()} disabled={Boolean(progress)}>
+              Take a photo
+            </Button>
+            <label className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-full border border-line bg-card px-4 text-sm font-medium text-foreground">
+              Choose a photo
+              <input id={`${fieldId}-photo`} className="sr-only" type="file" accept="image/*" onChange={(event) => void onFile(event)} />
+            </label>
+          </div>
+        )}
+        <label className="flex min-h-11 items-center gap-2 text-sm text-foreground">
           <input
             type="checkbox"
-            checked={draft.skipPhoto && !draft.file}
-            onChange={(event) => setDraft((current) => ({ ...current, skipPhoto: event.target.checked, file: null, removePhoto: event.target.checked }))}
+            checked={draft.skipPhoto && !draft.photo}
+            onChange={(event) => {
+              stopCamera();
+              clearPhoto(event.target.checked);
+            }}
           />
           Skip photo
         </label>
-        {existing?.photoPath && !draft.file && !draft.removePhoto ? (
-          <p className="mt-2 text-sm text-muted">The current photo stays unless you replace it or skip the photo.</p>
+        {currentPhoto ? (
+          <img src={currentPhoto} alt="Preview of the photo for this entry" className="max-h-64 w-full rounded-2xl bg-camera object-cover" />
         ) : null}
-      </div>
+        {existing?.photoPath && !draft.photo && !draft.removePhoto ? (
+          <p className="text-sm text-muted">The current photo stays unless you replace it or skip the photo.</p>
+        ) : null}
+      </fieldset>
       <div>
         <label htmlFor={`${fieldId}-text`} className="text-sm font-medium text-foreground">
           Journal entry
@@ -566,7 +811,14 @@ function EntryFields({
           {progress ? "Saving…" : submitLabel}
         </Button>
         {onCancel ? (
-          <Button variant="secondary" onClick={onCancel} disabled={Boolean(progress)}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              stopCamera();
+              onCancel();
+            }}
+            disabled={Boolean(progress)}
+          >
             Cancel
           </Button>
         ) : null}
@@ -598,12 +850,7 @@ function ConfirmDelete({
 
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/50 p-4" role="presentation">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className={`${cardClass} w-full max-w-md p-6`}
-      >
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className={`${cardClass} w-full max-w-md p-6`}>
         <h2 id={titleId} className="font-serif text-3xl text-foreground">
           Delete this entry?
         </h2>
@@ -661,24 +908,13 @@ function PromptLine({
       </p>
       {loading ? null : (
         <p className="mt-2 text-sm">
-          {source === "fallback"
-            ? "A prepared prompt, because the model is not replying."
-            : "A short prompt from the companion model."}
+          {source === "fallback" ? "A prepared prompt, because the model is not replying." : "A short prompt from the companion model."}
         </p>
       )}
       <Button variant="secondary" className="mt-3" onClick={onRefresh} disabled={loading}>
         {loading ? "Asking…" : "Another prompt"}
       </Button>
     </div>
-  );
-}
-
-function Photo({ entry }: { entry: AccountEntry }) {
-  if (!entry.photoUrl) {
-    return <div className="grid h-36 place-items-center rounded-[1.25rem] bg-accent text-sm text-accent-text">No photo</div>;
-  }
-  return (
-    <img src={entry.photoUrl} alt="Photo saved with this entry" className="max-h-80 w-full rounded-[1.25rem] bg-camera object-contain" />
   );
 }
 
@@ -693,6 +929,10 @@ function MoodButton({ pressed, onClick, children }: { pressed: boolean; onClick:
       {children}
     </button>
   );
+}
+
+function moodMark(entry: AccountEntry): string {
+  return moodLabel(entry.mood) ?? (entry.customFeeling?.trim() || "No label");
 }
 
 function moodChoice(value: string): MoodId | "all" {
@@ -711,6 +951,16 @@ function localDay(iso: string): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function revokePreview(url: string | null) {
+  if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+}
+
+function releaseStream(streamRef: { current: MediaStream | null }, videoRef: { current: HTMLVideoElement | null }) {
+  streamRef.current?.getTracks().forEach((track) => track.stop());
+  streamRef.current = null;
+  if (videoRef.current) videoRef.current.srcObject = null;
 }
 
 function isPrompt(value: unknown): value is { prompt: string; source: string } {

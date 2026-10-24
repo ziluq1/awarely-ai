@@ -152,7 +152,10 @@ export function CaptureMoment() {
           A photo is optional. Your browser asks for the camera only when you choose Take a photo. awarely.ai does not
           look at the picture or guess how you feel.
         </p>
-        <p>Images are resized in this browser. They are not uploaded.</p>
+        <p>
+          Images are resized in this browser. When you are signed in, saving the reflection stores the photo privately
+          with your account.
+        </p>
       </PageHeader>
 
       {phase === "requesting" ? <LoadingBlock label="Asking for camera access…" /> : null}
@@ -236,7 +239,7 @@ export function CaptureMoment() {
         <article className={`${cardClass} flex flex-col p-5`}>
           <h2 className="font-serif text-2xl text-foreground">Upload an image</h2>
           <p className="mt-2 flex-1 text-sm leading-relaxed text-muted">
-            Choose a JPG, PNG, or other image from this device. The file stays here.
+            Choose a JPG, PNG, or other image from this device. A signed-in save stores it with your account.
           </p>
           <label className="mt-5 inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-full bg-inverse px-5 py-2 text-sm font-medium text-inverse-text has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-3 has-[:focus-visible]:outline-accent-text">
             <span>Upload an image</span>

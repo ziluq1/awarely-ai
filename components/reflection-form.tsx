@@ -4,17 +4,21 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { CustomFeelingField } from "@/components/custom-feeling";
+import { useAuth } from "@/components/auth-provider";
 import { useJournal } from "@/components/journal-provider";
 import { PhotoView } from "@/components/photo-view";
 import { Button, PageHeader, buttonClass, cardClass, fieldClass } from "@/components/ui";
+import { createAccountEntry } from "@/lib/account-journal";
 import { parseCustomFeeling } from "@/lib/feelings";
 import { entryFeelings } from "@/lib/format";
+import { ImagePrepError, dataUrlToJpegBlob } from "@/lib/images";
 import { MOODS, REFLECTION_LIMIT } from "@/lib/types";
 
 type StorageChoice = "session" | "device" | "";
 
 export function ReflectionForm() {
   const formId = useId();
+  const auth = useAuth();
   const { draft, setDraft, clearDraft, saveEntry } = useJournal();
   const [reflection, setReflection] = useState("");
   const mood = draft.mood;
@@ -24,7 +28,7 @@ export function ReflectionForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [quota, setQuota] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState<{ where: "session" | "device"; hadPhoto: boolean } | null>(null);
+  const [saved, setSaved] = useState<{ where: "session" | "device"; hadPhoto: boolean; account: boolean } | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
   const reflectionRef = useRef<HTMLTextAreaElement>(null);
@@ -36,6 +40,62 @@ export function ReflectionForm() {
   useEffect(() => {
     if (saved) successRef.current?.focus();
   }, [saved]);
+
+  async function keepOnAccount(text: string, photoDataUrl: string | null) {
+    if (auth.status === "loading") {
+      return { ok: false as const, message: "Still checking your sign-in. Try again in a moment." };
+    }
+    if (auth.status !== "signed-in") return { ok: true as const, account: false };
+    try {
+      const photo = photoDataUrl ? await dataUrlToJpegBlob(photoDataUrl) : null;
+      const result = await createAccountEntry({
+        journalText: text,
+        mood,
+        customFeeling,
+        photo,
+        onProgress: () => undefined,
+      });
+      if (!result.ok) return result;
+      return { ok: true as const, account: true };
+    } catch (reason) {
+      return {
+        ok: false as const,
+        message: reason instanceof ImagePrepError ? reason.message : "That photo could not be prepared. Try another image.",
+      };
+    }
+  }
+
+  async function finishSave(input: {
+    text: string;
+    photoDataUrl: string | null;
+    where: "session" | "device";
+    deviceConsent: boolean;
+  }) {
+    const account = await keepOnAccount(input.text, input.photoDataUrl);
+    if (!account.ok) {
+      setSaving(false);
+      setFormError(account.message);
+      return;
+    }
+    const result = saveEntry({
+      reflection: input.text,
+      mood,
+      customFeeling,
+      photoDataUrl: input.photoDataUrl,
+      where: input.where,
+      deviceConsent: input.deviceConsent,
+    });
+    setSaving(false);
+    if (!result.ok && !account.account) {
+      setQuota(result.code === "quota");
+      setFormError(result.message);
+      return;
+    }
+    setSaved({ where: input.where, hadPhoto: Boolean(input.photoDataUrl), account: account.account });
+    setQuota(false);
+    setFormError(result.ok ? null : result.message);
+    clearDraft();
+  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -66,70 +126,35 @@ export function ReflectionForm() {
     const photoDataUrl = draft.photoDataUrl;
     setSaving(true);
     setFormError(null);
-    window.setTimeout(() => {
-      const result = saveEntry({
-        reflection: text,
-        mood,
-        customFeeling,
-        photoDataUrl,
-        where,
-        deviceConsent: where === "device" && deviceConsent,
-      });
-      setSaving(false);
-      if (!result.ok) {
-        setQuota(result.code === "quota");
-        setFormError(result.message);
-        return;
-      }
-      setSaved({ where, hadPhoto: Boolean(photoDataUrl) });
-      setQuota(false);
-      clearDraft();
-    }, 0);
+    void finishSave({
+      text,
+      photoDataUrl,
+      where,
+      deviceConsent: where === "device" && deviceConsent,
+    });
   }
 
   function saveWithoutPhoto() {
     if (where !== "device") return;
     setSaving(true);
-    window.setTimeout(() => {
-      const result = saveEntry({
-        reflection,
-        mood,
-        customFeeling,
-        photoDataUrl: null,
-        where: "device",
-        deviceConsent: true,
-      });
-      setSaving(false);
-      if (!result.ok) {
-        setFormError(result.message);
-        return;
-      }
-      setSaved({ where: "device", hadPhoto: false });
-      setQuota(false);
-      clearDraft();
-    }, 0);
+    setFormError(null);
+    void finishSave({
+      text: reflection,
+      photoDataUrl: null,
+      where: "device",
+      deviceConsent: true,
+    });
   }
 
   function keepVisitInstead() {
     setSaving(true);
-    window.setTimeout(() => {
-      const result = saveEntry({
-        reflection,
-        mood,
-        customFeeling,
-        photoDataUrl: draft.photoDataUrl,
-        where: "session",
-        deviceConsent: false,
-      });
-      setSaving(false);
-      if (!result.ok) {
-        setFormError(result.message);
-        return;
-      }
-      setSaved({ where: "session", hadPhoto: Boolean(draft.photoDataUrl) });
-      setQuota(false);
-      clearDraft();
-    }, 0);
+    setFormError(null);
+    void finishSave({
+      text: reflection,
+      photoDataUrl: draft.photoDataUrl,
+      where: "session",
+      deviceConsent: false,
+    });
   }
 
   function discardDraft() {
@@ -158,15 +183,26 @@ export function ReflectionForm() {
         <PageHeader eyebrow="Reflect" title="What stands out to you about this moment?" />
         <div ref={successRef} tabIndex={-1} role="status" className={`${cardClass} p-6 outline-none sm:p-8`}>
           <h2 className="font-serif text-3xl text-foreground">
-            {saved.where === "device" ? "Remembered on this device" : "Kept for this visit"}
+            {saved.account ? "Saved to your timeline" : saved.where === "device" ? "Remembered on this device" : "Kept for this visit"}
           </h2>
           <p className="mt-3 leading-relaxed text-muted">
-            {saved.where === "device"
-              ? "This entry is in this browser’s local storage. It was not uploaded. You can delete it from the timeline or the privacy page."
-              : "This entry stays in this tab’s memory. Reloading or closing the tab removes it. It was not written to device storage."}
+            {saved.account
+              ? "This moment is on your account timeline. It stays after you refresh, log out, or open awarely.ai on another device."
+              : saved.where === "device"
+                ? "This entry is in this browser’s local storage. Log in before saving if you want it on your account timeline."
+                : "This entry stays in this tab’s memory. Log in before saving if you want it on your account timeline."}
           </p>
           {saved.hadPhoto ? (
-            <p className="mt-3 leading-relaxed text-muted">The photo is included with the entry. The draft no longer holds a copy.</p>
+            <p className="mt-3 leading-relaxed text-muted">
+              {saved.account
+                ? "The photo is stored privately with the entry and opens through a temporary link."
+                : "The photo is included with the browser copy. The draft no longer holds it."}
+            </p>
+          ) : null}
+          {formError ? (
+            <p className="mt-3 text-sm text-danger" role="alert">
+              {formError}
+            </p>
           ) : null}
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link href="/timeline" className={buttonClass("primary", "w-full sm:w-auto")}>
@@ -292,7 +328,7 @@ export function ReflectionForm() {
         <fieldset>
           <legend className="text-base font-medium text-foreground">Where should this entry stay?</legend>
           <p id={`${formId}-storage`} className="mt-1 text-sm leading-relaxed text-muted">
-            Nothing is added to your timeline until you choose. Photos and writing are not uploaded.{" "}
+            Nothing is kept until you choose. When you are signed in, the save also stores the entry and any photo privately on your account timeline.{" "}
             <Link className="font-medium text-accent-text underline decoration-line underline-offset-4" href="/privacy">
               Read how storage works
             </Link>

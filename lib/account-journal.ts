@@ -1,6 +1,7 @@
 import type { MoodId } from "@/lib/types";
 import { MOODS, REFLECTION_LIMIT } from "@/lib/types";
 import { parseCustomFeeling } from "@/lib/feelings";
+import { associateSignedUrls } from "@/lib/photo-links";
 import { browserSupabase } from "@/lib/supabase/browser";
 
 export const PHOTO_BUCKET = "journal-photos";
@@ -15,6 +16,11 @@ export type AccountEntry = {
   photoUrl: string | null;
 };
 
+export type AccountList = {
+  entries: AccountEntry[];
+  photoMessage: string | null;
+};
+
 export type JournalResult<T> = { ok: true; value: T } | { ok: false; message: string };
 
 type EntryRow = {
@@ -26,7 +32,7 @@ type EntryRow = {
   photo_path: string | null;
 };
 
-export async function listAccountEntries(): Promise<JournalResult<AccountEntry[]>> {
+export async function listAccountEntries(): Promise<JournalResult<AccountList>> {
   const ready = await readyClient();
   if (!ready.ok) return ready;
   const { supabase } = ready.value;
@@ -37,11 +43,25 @@ export async function listAccountEntries(): Promise<JournalResult<AccountEntry[]
     .limit(200);
   if (error) return { ok: false, message: journalError(error.message, error.code) };
   const rows = entryRows(data);
-  const urls = await signedUrls(
-    supabase,
-    rows.map((row) => row.photo_path).filter((path): path is string => Boolean(path)),
-  );
-  return { ok: true, value: rows.map((row) => toEntry(row, urls)) };
+  const paths = rows.map((row) => row.photo_path).filter((path): path is string => Boolean(path));
+  const signed = await signedUrls(supabase, paths);
+  if (!signed.ok) {
+    return {
+      ok: true,
+      value: {
+        entries: rows.map((row) => toEntry(row, new Map())),
+        photoMessage: signed.message,
+      },
+    };
+  }
+  const missing = paths.filter((path) => !signed.value.has(path));
+  return {
+    ok: true,
+    value: {
+      entries: rows.map((row) => toEntry(row, signed.value)),
+      photoMessage: missing.length > 0 ? "Some photos are saved, but their private links could not be opened." : null,
+    },
+  };
 }
 
 export async function createAccountEntry(input: {
@@ -85,8 +105,9 @@ export async function createAccountEntry(input: {
     if (photoPath) await ready.value.supabase.storage.from(PHOTO_BUCKET).remove([photoPath]);
     return { ok: false, message: "Supabase saved the entry, but the reply was missing the expected fields." };
   }
-  const urls = photoPath ? await signedUrls(ready.value.supabase, [photoPath]) : new Map<string, string>();
-  return { ok: true, value: toEntry(row, urls) };
+  const linked = await requirePhotoLink(ready.value.supabase, row.id, photoPath, { kind: "create" });
+  if (!linked.ok) return linked;
+  return { ok: true, value: toEntry(row, linked.value) };
 }
 
 export async function updateAccountEntry(input: {
@@ -132,12 +153,18 @@ export async function updateAccountEntry(input: {
     if (uploadedPath) await ready.value.supabase.storage.from(PHOTO_BUCKET).remove([uploadedPath]);
     return { ok: false, message: "Supabase saved the entry, but the reply was missing the expected fields." };
   }
+  const linked = await requirePhotoLink(
+    ready.value.supabase,
+    row.id,
+    photoPath,
+    uploadedPath ? { kind: "replace", previousPath: input.entry.photoPath } : { kind: "keep" },
+  );
+  if (!linked.ok) return linked;
   const previous = input.entry.photoPath;
   if (previous && previous !== photoPath) {
     await ready.value.supabase.storage.from(PHOTO_BUCKET).remove([previous]);
   }
-  const urls = photoPath ? await signedUrls(ready.value.supabase, [photoPath]) : new Map<string, string>();
-  return { ok: true, value: toEntry(row, urls) };
+  return { ok: true, value: toEntry(row, linked.value) };
 }
 
 export async function deleteAccountEntry(entry: AccountEntry): Promise<JournalResult<null>> {
@@ -164,17 +191,46 @@ async function uploadPhoto(
   return { ok: true, value: path };
 }
 
+type PhotoRollback = { kind: "create" } | { kind: "replace"; previousPath: string | null } | { kind: "keep" };
+
+async function requirePhotoLink(
+  supabase: NonNullable<ReturnType<typeof browserSupabase>>,
+  entryId: string,
+  photoPath: string | null,
+  rollback: PhotoRollback,
+): Promise<JournalResult<Map<string, string>>> {
+  const signed = photoPath ? await signedUrls(supabase, [photoPath]) : { ok: true as const, value: new Map<string, string>() };
+  if (signed.ok && (!photoPath || signed.value.has(photoPath))) return signed;
+  if (rollback.kind === "keep") return { ok: true, value: new Map() };
+  const message = signed.ok
+    ? "The photo was uploaded, but a private link could not be created. The new photo was not kept."
+    : signed.message;
+  if (rollback.kind === "replace") {
+    await supabase.from("journal_entries").update({ photo_path: rollback.previousPath }).eq("id", entryId);
+    if (photoPath) await supabase.storage.from(PHOTO_BUCKET).remove([photoPath]);
+    return { ok: false, message };
+  }
+  await supabase.from("journal_entries").delete().eq("id", entryId);
+  if (photoPath) await supabase.storage.from(PHOTO_BUCKET).remove([photoPath]);
+  return { ok: false, message: signed.ok ? "The photo was uploaded, but a private link could not be created. The entry was not kept." : signed.message };
+}
+
 async function signedUrls(
   supabase: NonNullable<ReturnType<typeof browserSupabase>>,
   paths: string[],
-): Promise<Map<string, string>> {
-  const urls = new Map<string, string>();
-  if (paths.length === 0) return urls;
-  const { data } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 60 * 60);
-  for (const item of data ?? []) {
-    if (item.path && item.signedUrl) urls.set(item.path, item.signedUrl);
-  }
-  return urls;
+): Promise<JournalResult<Map<string, string>>> {
+  if (paths.length === 0) return { ok: true, value: new Map() };
+  const { data, error } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 60 * 60);
+  if (error) return { ok: false, message: storageError(error.message) };
+  const linked = associateSignedUrls(
+    paths,
+    (data ?? []).map((item) => ({
+      path: item.path,
+      signedUrl: item.signedUrl,
+      error: item.error,
+    })),
+  );
+  return { ok: true, value: linked.urls };
 }
 
 async function readyClient(): Promise<JournalResult<{ supabase: NonNullable<ReturnType<typeof browserSupabase>>; userId: string }>> {

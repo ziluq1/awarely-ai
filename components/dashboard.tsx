@@ -48,7 +48,7 @@ export function Dashboard() {
         </h1>
         <p className="mt-6 text-lg leading-relaxed text-muted">
           A calm place to notice one moment, write what stands out, and keep a visual journal only if you choose.
-          Photos stay in this browser. They are not uploaded, and they are not used to guess how you feel.
+          Photos are not used to guess how you feel. A signed-in save stores a photo privately with your account timeline.
         </p>
       </section>
 

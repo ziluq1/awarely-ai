@@ -1,4 +1,5 @@
 import { APIConnectionTimeoutError, APIError, Groq } from "groq-sdk";
+import { serverEnv } from "@/lib/agent/server-env";
 import type { ChatCompletionMessageParam } from "groq-sdk/resources/chat/completions";
 import { consumeModelCall, RATE_LIMIT_KEY } from "@/lib/agent/limits";
 import { SYSTEM_PROMPT, UNCERTAIN_PROMPT } from "@/lib/agent/prompt";
@@ -16,7 +17,7 @@ export async function createCompanionReply(
   input: { message: string; history: { role: "user" | "assistant"; content: string }[]; uncertain?: boolean },
 ): Promise<GroqAttempt> {
   const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY,
+    apiKey: serverEnv("GROQ_API_KEY"),
     timeout: TIMEOUT_MS,
     maxRetries: 0,
     logLevel: "off",

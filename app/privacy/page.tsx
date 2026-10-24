@@ -13,12 +13,11 @@ export default function PrivacyPage() {
     <div className="space-y-8">
       <PageHeader eyebrow="Privacy" title="What stays on this device">
         <p>
-          Reflections you keep from Capture and Reflect stay in this browser. They are not uploaded, and images are not
-          analyzed. A moment you save on the timeline while signed in is stored in your Supabase account.
-          A message you choose to send in the AI companion is sent to Groq only when model calls are enabled. If Groq
-          cannot take that request and Gemini is configured, the same message is sent to Google Gemini. Sign-in is
-          optional. Email, password checks, and Google sign-in are handled by Supabase. Journal entries and photos
-          still stay in this browser.
+          A browser copy of Capture and Reflect stays on this device. Images are not analyzed. When you are signed in,
+          saving also stores that moment and its photo privately in your Supabase account so it can appear on the
+          timeline. A message you choose to send in the AI companion is sent to Groq only when model calls are enabled.
+          If Groq cannot take that request and Gemini is configured, the same message is sent to Google Gemini. Sign-in
+          is optional. Email, password checks, and Google sign-in are handled by Supabase.
         </p>
       </PageHeader>
 

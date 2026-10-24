@@ -34,7 +34,7 @@ type ChatMessage = GuideMessage | UserMessage;
 
 const UNAVAILABLE = {
   disabled:
-    "Demo mode. The AI companion is unavailable because model calls are turned off. The exercises below were written in advance. They are not replies from a language model.",
+    "Demo mode. The AI companion is unavailable because MODEL_CALLS_ENABLED is not true. The exercises below were written in advance. They are not replies from a language model.",
   unconfigured:
     "Demo mode. The AI companion is unavailable because GROQ_API_KEY or GROQ_MODEL is not configured. The exercises below were written in advance. They are not replies from a language model.",
   unknown:

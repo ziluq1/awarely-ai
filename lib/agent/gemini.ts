@@ -1,4 +1,5 @@
 import { SYSTEM_PROMPT, UNCERTAIN_PROMPT } from "@/lib/agent/prompt";
+import { serverEnv } from "@/lib/agent/server-env";
 import type { CompanionFailure, CompanionResponse } from "@/lib/agent/types";
 
 const OUTPUT_TOKENS = 350;
@@ -13,15 +14,15 @@ type GeminiInput = {
 };
 
 export function readGeminiModel(): string | null {
-  const key = process.env.GEMINI_API_KEY?.trim() ?? "";
-  const configured = process.env.GEMINI_MODEL?.trim() ?? "";
+  const key = serverEnv("GEMINI_API_KEY");
+  const configured = serverEnv("GEMINI_MODEL");
   const model = configured || DEFAULT_MODEL;
   if (!key || !MODEL_ID.test(model)) return null;
   return model;
 }
 
 export async function createGeminiReply(model: string, input: GeminiInput): Promise<CompanionResponse> {
-  const key = process.env.GEMINI_API_KEY?.trim() ?? "";
+  const key = serverEnv("GEMINI_API_KEY");
   if (!key) {
     return {
       ok: false,

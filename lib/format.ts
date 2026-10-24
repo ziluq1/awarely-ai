@@ -10,6 +10,12 @@ export function formatWhen(iso: string): string {
   }).format(date);
 }
 
+export function formatDay(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Undated";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+}
+
 export function moodLabel(mood: MoodId | null): string | null {
   if (!mood) return null;
   return MOODS.find((item) => item.id === mood)?.label ?? null;

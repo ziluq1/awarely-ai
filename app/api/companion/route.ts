@@ -48,7 +48,7 @@ export async function POST(request: Request) {
   if (!availability.available) {
     const message =
       availability.reason === "disabled"
-        ? "The AI companion is unavailable because model calls are turned off. Prepared exercises on this page do not use a model."
+        ? "The AI companion is unavailable because MODEL_CALLS_ENABLED is not true. Prepared exercises on this page do not use a model."
         : "The AI companion is unavailable because GROQ_API_KEY or GROQ_MODEL is missing or not usable. No model was called.";
     return respond({ ok: false, code: availability.reason, message, tool: null }, 503);
   }
