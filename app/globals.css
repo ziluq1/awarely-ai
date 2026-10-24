@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f3ec;
+  --foreground: #241f2b;
+  --card: #fffcf8;
+  --muted: #4e463f;
+  --line: #8f8376;
+  --accent: #ebe4f6;
+  --accent-text: #3f345c;
+  --sage: #e5f0e6;
+  --sage-text: #1e4634;
+  --blush: #f8e8e2;
+  --blush-text: #6a332c;
+  --danger: #8a2f3a;
+  --inverse: #3f345c;
+  --inverse-text: #fbf8f4;
+  --camera: #241f2b;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-appearance="light"]) {
+    --background: #121212;
+    --foreground: #f6f3ee;
+    --card: #1e1c22;
+    --muted: #d4cdc4;
+    --line: #9a90a4;
+    --accent: #3a334c;
+    --accent-text: #f3e9ff;
+    --sage: #24352d;
+    --sage-text: #dff3e4;
+    --blush: #3c2a2e;
+    --blush-text: #ffd8d2;
+    --danger: #ffb4bc;
+    --inverse: #efe6ff;
+    --inverse-text: #24182f;
+    --camera: #121212;
+    color-scheme: dark;
+  }
+}
+
+html[data-appearance="dark"] {
+  color-scheme: dark;
+}
+
+html[data-appearance="light"] {
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
+  --color-sage: var(--sage);
+  --color-sage-text: var(--sage-text);
+  --color-blush: var(--blush);
+  --color-blush-text: var(--blush-text);
+  --color-danger: var(--danger);
+  --color-inverse: var(--inverse);
+  --color-inverse-text: var(--inverse-text);
+  --color-camera: var(--camera);
+  --font-sans: var(--font-geist-sans);
+  --font-serif: var(--font-newsreader);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+  background:
+    radial-gradient(900px 420px at 100% -10%, color-mix(in srgb, var(--accent) 85%, transparent), transparent 60%),
+    radial-gradient(720px 380px at -10% 10%, color-mix(in srgb, var(--sage) 80%, transparent), transparent 55%),
+    var(--background);
+  color: var(--foreground);
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: 0.75rem;
+  z-index: 50;
+  transform: translateY(-150%);
+  border-radius: 999px;
+  background: var(--inverse);
+  color: var(--inverse-text);
+  padding: 0.75rem 1rem;
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+.journal-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
