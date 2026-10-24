@@ -13,7 +13,7 @@ create table public.journal_entries (
   photo_path text,
   constraint journal_entries_mood_check check (
     mood is null
-    or mood in ('calm', 'grateful', 'tender', 'heavy', 'restless', 'hopeful', 'unsure')
+    or mood in ('happy', 'sad', 'excited', 'calm', 'grateful', 'tender', 'heavy', 'restless', 'hopeful', 'unsure')
   ),
   constraint journal_entries_custom_feeling_check check (
     custom_feeling is null

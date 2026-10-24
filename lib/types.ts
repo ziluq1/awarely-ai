@@ -1,7 +1,9 @@
 export const MOODS = [
+  { id: "happy", label: "Happy" },
+  { id: "sad", label: "Sad" },
+  { id: "excited", label: "Excited" },
   { id: "calm", label: "Calm" },
   { id: "grateful", label: "Grateful" },
-  { id: "tender", label: "Tender" },
   { id: "heavy", label: "Heavy" },
   { id: "restless", label: "Restless" },
   { id: "hopeful", label: "Hopeful" },

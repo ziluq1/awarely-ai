@@ -1,20 +1,12 @@
 import { parseCustomFeeling } from "@/lib/feelings";
 import type { JournalEntry, MoodId } from "@/lib/types";
-import { REFLECTION_LIMIT } from "@/lib/types";
+import { MOODS, REFLECTION_LIMIT } from "@/lib/types";
 
 const STORAGE_KEY = "mindmate.journal.v1";
 const STORAGE_EVENT = "mindmate-journal";
 const UNAVAILABLE = "\u0000unavailable";
 
-const MOOD_IDS = new Set<MoodId>([
-  "calm",
-  "grateful",
-  "tender",
-  "heavy",
-  "restless",
-  "hopeful",
-  "unsure",
-]);
+const MOOD_IDS = new Set<MoodId>(MOODS.map((mood) => mood.id));
 
 export type DeviceJournal =
   | { status: "empty" }
@@ -167,8 +159,12 @@ function sanitizeEntry(value: unknown): { entry: JournalEntry; photoAdjusted: bo
   if (typeof candidate.reflection !== "string") return null;
   const reflection = candidate.reflection.trim();
   if (!reflection || reflection.length > REFLECTION_LIMIT) return null;
-  if (candidate.mood !== null && (typeof candidate.mood !== "string" || !MOOD_IDS.has(candidate.mood))) {
-    return null;
+  let mood: MoodId | null = null;
+  if (candidate.mood != null) {
+    if (typeof candidate.mood !== "string") return null;
+    if (candidate.mood === "tender") mood = null;
+    else if (MOOD_IDS.has(candidate.mood as MoodId)) mood = candidate.mood as MoodId;
+    else return null;
   }
   if (
     candidate.customFeeling !== undefined &&
@@ -200,7 +196,7 @@ function sanitizeEntry(value: unknown): { entry: JournalEntry; photoAdjusted: bo
       id: candidate.id,
       createdAt: candidate.createdAt,
       reflection,
-      mood: candidate.mood ?? null,
+      mood,
       customFeeling: feeling.ok ? feeling.value : null,
       photoDataUrl,
       storage: "device",

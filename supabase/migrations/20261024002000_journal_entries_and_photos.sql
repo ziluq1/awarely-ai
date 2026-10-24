@@ -5,7 +5,7 @@
 -- Matches lib/account-journal.ts:
 --   table public.journal_entries
 --   columns id, user_id, created_at, mood, custom_feeling, journal_text, photo_path
---   mood values calm, grateful, tender, heavy, restless, hopeful, unsure, or null
+--   mood values happy, sad, excited, calm, grateful, tender, heavy, restless, hopeful, unsure, or null
 --   private bucket journal-photos
 --   object path {user uuid}/{entry uuid}-{unix milliseconds}.jpg
 --
@@ -101,13 +101,13 @@ begin
     select 1
     from public.journal_entries
     where mood is not null
-      and mood not in ('calm', 'grateful', 'tender', 'heavy', 'restless', 'hopeful', 'unsure')
+      and mood not in ('happy', 'sad', 'excited', 'calm', 'grateful', 'tender', 'heavy', 'restless', 'hopeful', 'unsure')
   ) then
     alter table public.journal_entries drop constraint if exists journal_entries_mood_check;
     alter table public.journal_entries
       add constraint journal_entries_mood_check check (
         mood is null
-        or mood in ('calm', 'grateful', 'tender', 'heavy', 'restless', 'hopeful', 'unsure')
+        or mood in ('happy', 'sad', 'excited', 'calm', 'grateful', 'tender', 'heavy', 'restless', 'hopeful', 'unsure')
       );
   else
     raise notice 'Left the mood check unchanged because existing mood values are outside the app list. No rows were changed.';
