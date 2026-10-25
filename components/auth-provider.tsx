@@ -38,7 +38,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const displayName = profile.displayName.trim();
     if (!displayName) return;
     saved.current = { id: profile.id, displayName, avatarPath: profile.avatarPath };
-    if (options?.photo) revision.current = Date.now();
+    if (options?.photo) {
+      revision.current = Date.now();
+      loadToken.current += 1;
+    }
     setIdentityReady(true);
     setUser((current) => {
       if (!current || current.id !== profile.id) return current;

@@ -132,13 +132,10 @@ function FriendsBody() {
         <p>Friends are not a substitute for professional mental-health care.</p>
       </PageHeader>
       <div className="flex flex-wrap gap-2">
-        <Link className={buttonClass("secondary")} href="/profile">
-          Your profile
-        </Link>
         <Link className={buttonClass("secondary")} href="/shared">
           Shared timelines
         </Link>
-        <Link className={buttonClass("quiet")} href="/notifications">
+        <Link className={buttonClass("secondary")} href="/notifications">
           Notification
         </Link>
       </div>

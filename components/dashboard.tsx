@@ -6,13 +6,12 @@ import { useAuth } from "@/components/auth-provider";
 import { useJournal } from "@/components/journal-provider";
 import { useCompanionStatus } from "@/components/use-companion-status";
 import { buttonClass, cardClass, ErrorBlock } from "@/components/ui";
-import { CustomFeelingField } from "@/components/custom-feeling";
 import { listPhotoTimes, listSavedMoods } from "@/lib/account-journal";
 import type { SavedMood } from "@/lib/account-journal";
 import { photoStreak } from "@/lib/streak";
 import { entryFeelings, formatWhen } from "@/lib/format";
 import { MOODS } from "@/lib/types";
-import type { JournalEntry, MoodId } from "@/lib/types";
+import type { JournalEntry } from "@/lib/types";
 
 const STEPS = [
   {
@@ -31,7 +30,7 @@ const STEPS = [
 
 export function Dashboard() {
   const auth = useAuth();
-  const { device, entries, draft, setDraft } = useJournal();
+  const { device, entries } = useJournal();
   const recent = entries.slice(0, 3);
   const [accountMoods, setAccountMoods] = useState<SavedMood[]>([]);
   const [photoTimes, setPhotoTimes] = useState<string[]>([]);
@@ -81,15 +80,11 @@ export function Dashboard() {
     };
   }, [auth.status, auth.verified, auth.user?.id]);
 
-  function chooseMood(id: MoodId) {
-    setDraft({ ...draft, mood: draft.mood === id ? null : id });
-  }
-
   return (
     <div className="space-y-12">
       <section className="max-w-3xl">
         <p className="text-sm font-medium uppercase tracking-[0.18em] text-accent-text">Home</p>
-        <h1 className="mt-4 font-serif text-4xl leading-[1.05] text-foreground min-[380px]:text-5xl sm:text-6xl">
+        <h1 className="mt-4 text-balance font-serif text-4xl leading-[1.05] text-foreground sm:text-5xl lg:text-6xl">
           Take a moment for yourself.
         </h1>
         <p className="mt-6 text-lg leading-relaxed text-muted">
@@ -118,64 +113,6 @@ export function Dashboard() {
           loading={streakLoading || auth.status === "loading"}
         />
       </div>
-
-      <section aria-labelledby="mood-checkin-heading" className={`${cardClass} p-6 sm:p-8`}>
-        <h2 id="mood-checkin-heading" className="font-serif text-3xl text-foreground">
-          Optional mood check-in
-        </h2>
-        <p className="mt-3 max-w-2xl leading-relaxed text-muted">
-          Choose a label if you want one. It stays with this draft and is not saved until you keep a reflection.
-          awarely.ai does not pick it for you.
-        </p>
-        <div className="mt-5 flex flex-wrap gap-2">
-          {MOODS.map((mood) => {
-            const selected = draft.mood === mood.id;
-            return (
-              <button
-                key={mood.id}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => chooseMood(mood.id)}
-                className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-medium ${
-                  selected
-                    ? "border-transparent bg-accent text-accent-text"
-                    : "border-line bg-card text-foreground hover:bg-accent/60"
-                }`}
-              >
-                {mood.label}
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            aria-pressed={draft.customFeeling !== null}
-            onClick={() =>
-              setDraft({ ...draft, customFeeling: draft.customFeeling === null ? "" : null })
-            }
-            className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-medium ${
-              draft.customFeeling !== null
-                ? "border-transparent bg-accent text-accent-text"
-                : "border-line bg-card text-foreground hover:bg-accent/60"
-            }`}
-          >
-            Other
-          </button>
-        </div>
-        {draft.customFeeling !== null ? (
-          <CustomFeelingField
-            id="dashboard-custom-feeling"
-            value={draft.customFeeling}
-            onChange={(customFeeling) => setDraft({ ...draft, customFeeling })}
-            onClear={() => setDraft({ ...draft, customFeeling: null })}
-          />
-        ) : null}
-        <p className="mt-4 text-sm text-muted" aria-live="polite">
-          {draftStatus(draft.mood, draft.customFeeling)}
-        </p>
-        <Link href="/reflect" className={`${buttonClass("secondary", "mt-4")}`}>
-          Continue to your reflection
-        </Link>
-      </section>
 
       <CompanionShortcut />
 
@@ -345,12 +282,6 @@ function PhotoStreak({ count, loading }: { count: number; loading: boolean }) {
   );
 }
 
-function draftStatus(mood: MoodId | null, customFeeling: string | null): string {
-  const summary = entryFeelings(mood, customFeeling);
-  if (summary === "No mood label.") return "No draft label.";
-  return `${summary} Not saved yet.`;
-}
-
 function CompanionShortcut() {
   const status = useCompanionStatus();
   const detail =
@@ -367,7 +298,7 @@ function CompanionShortcut() {
             : "The model is not configured. The companion page offers prepared exercises instead of AI replies.";
 
   return (
-    <section aria-labelledby="companion-heading" className={`${cardClass} grid gap-6 p-6 md:grid-cols-[1.4fr_0.8fr] md:p-8`}>
+    <section aria-labelledby="companion-heading" className={`${cardClass} grid gap-6 p-6 lg:grid-cols-[1.4fr_0.8fr] lg:p-8`}>
       <div>
         <h2 id="companion-heading" className="font-serif text-3xl text-foreground">
           AI wellness companion
@@ -375,7 +306,7 @@ function CompanionShortcut() {
         <p className="mt-3 max-w-xl leading-relaxed text-muted">{detail}</p>
       </div>
       <div className="flex items-end">
-        <Link href="/companion" className={buttonClass("secondary", "w-full md:w-auto")}>
+        <Link href="/companion" className={buttonClass("secondary", "w-full lg:w-auto")}>
           Open the AI companion
         </Link>
       </div>

@@ -231,16 +231,45 @@ export async function saveAvatar(file: Blob): Promise<SocialResult<Profile>> {
     return fail(error instanceof ImagePrepError ? error.message : "That image could not be prepared.");
   }
   const path = avatarObjectPath(userId);
-  const uploaded = await supabase.storage.from(AVATAR_BUCKET).upload(path, blob, {
-    contentType: "image/jpeg",
-    upsert: true,
-  });
-  if (uploaded.error) return fail(socialError(uploaded.error));
+  const stored = await storeAvatar(supabase, path, blob);
+  if (!stored.ok) return stored;
   const saved = await rpc("set_my_avatar", { next_path: path });
   if (!saved.ok) return saved;
   const profile = profileFrom(saved.value);
-  if (!profile) return fail("Your profile photo was uploaded, but the profile could not be read.");
+  if (!profile?.avatarPath) return fail("Your profile photo was uploaded, but it was not saved on your profile.");
   return { ok: true, value: profile };
+}
+
+function isStoredAlready(error: { message?: string; statusCode?: string | number }): boolean {
+  return /409|already exists|duplicate/i.test(`${error.statusCode ?? ""} ${error.message ?? ""}`);
+}
+
+function avatarStorageError(error: { message?: string }): string {
+  const message = error.message?.trim() ?? "";
+  if (/row-level security|policy/i.test(message)) {
+    return "The profile photo could not be saved because storage blocked this account. Run the latest profile photo migration in the Supabase SQL editor.";
+  }
+  if (/mime|content type|invalid file/i.test(message)) return "Choose a JPG, PNG, WebP, or GIF image.";
+  if (/size|too large|payload/i.test(message)) return "That image is too large. Try one under 15 MB.";
+  if (/Bucket not found|NoSuchBucket/i.test(message)) {
+    return "That private storage bucket is not set up yet. Run the friends migration in the SQL editor.";
+  }
+  if (/jwt|not authenticated/i.test(message)) return "Log in to continue.";
+  return "The profile photo could not be saved. Try again.";
+}
+
+async function storeAvatar(supabase: SupabaseClient, path: string, blob: Blob): Promise<SocialResult<null>> {
+  const created = await supabase.storage.from(AVATAR_BUCKET).upload(path, blob, {
+    contentType: "image/jpeg",
+    upsert: false,
+  });
+  if (!created.error) return { ok: true, value: null };
+  if (!isStoredAlready(created.error)) return fail(avatarStorageError(created.error));
+  const replaced = await supabase.storage.from(AVATAR_BUCKET).update(path, blob, {
+    contentType: "image/jpeg",
+  });
+  if (replaced.error) return fail(avatarStorageError(replaced.error));
+  return { ok: true, value: null };
 }
 
 export async function clearAvatar(): Promise<SocialResult<Profile>> {

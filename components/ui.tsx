@@ -42,7 +42,7 @@ export function PageHeader({
     <header className="max-w-2xl">
       {title ? <p className={labelClass}>{eyebrow}</p> : <h1 className={labelClass}>{eyebrow}</h1>}
       {title ? (
-        <h1 className="mt-3 font-serif text-3xl leading-[1.1] text-foreground min-[380px]:text-4xl sm:text-5xl">{title}</h1>
+        <h1 className="mt-3 text-balance font-serif text-3xl leading-[1.1] text-foreground sm:text-4xl lg:text-5xl">{title}</h1>
       ) : null}
       {children ? <div className="mt-4 space-y-3 text-base leading-relaxed text-muted">{children}</div> : null}
     </header>

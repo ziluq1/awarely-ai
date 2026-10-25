@@ -62,8 +62,8 @@ export function AuthScreen({ mode }: { mode: Mode }) {
 
   useEffect(() => {
     if (mode === "reset" || auth.status !== "signed-in" || !auth.verified) return;
-    if (mode === "login") {
-      router.replace("/");
+    if (mode === "login" || mode === "signup") {
+      reloadPage(mode === "login" ? "/" : safeNextPath(nextPath));
       return;
     }
     router.replace(safeNextPath(nextPath));
@@ -71,6 +71,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
 
   const callbackError = params.get("error");
   const banner = authLinkMessage(callbackError);
+  const accountDeleted = params.get("deleted") === "1";
   const canResend =
     (mode === "login" || mode === "signup") &&
     (Boolean(banner) || notice.startsWith("Check your email") || formError.includes("Confirm your email"));
@@ -124,7 +125,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
         setFormError(authErrorMessage("Email not confirmed"));
         return;
       }
-      router.replace("/");
+      reloadPage("/");
       return;
     }
 
@@ -144,7 +145,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
         setNotice("Check your email for a confirmation link. After you confirm, you can log in.");
         return;
       }
-      router.replace("/");
+      reloadPage("/");
       return;
     }
 
@@ -230,6 +231,11 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       </PageHeader>
 
       <div className={`${cardClass} space-y-5 p-6 sm:p-8`}>
+        {accountDeleted ? (
+          <p className="rounded-2xl bg-sage px-4 py-3 text-sm leading-relaxed text-sage-text" role="status">
+            Your account was deleted.
+          </p>
+        ) : null}
         {banner ? <ErrorBlock title="Sign-in needs another try" message={banner} /> : null}
         {formError ? <ErrorBlock title={errorTitle(mode)} message={formError} /> : null}
         {notice ? (
@@ -327,7 +333,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
             </Link>
           ) : null}
           {mode === "login" ? (
-            <p className="text-muted">
+            <p className="text-lg text-foreground">
               New here?{" "}
               <Link className="font-medium text-accent-text underline decoration-line underline-offset-4" href="/signup">
                 Sign up
@@ -351,6 +357,10 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       </div>
     </div>
   );
+}
+
+function reloadPage(path: string) {
+  window.location.replace(path);
 }
 
 function errorTitle(mode: Mode): string {

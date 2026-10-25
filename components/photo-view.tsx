@@ -9,7 +9,7 @@ export function PhotoView({ src, alt }: { src: string; alt: string }) {
       height={960}
       unoptimized
       sizes="(min-width: 768px) 40rem, 100vw"
-      className="h-auto max-h-[28rem] w-full rounded-[1.5rem] bg-camera object-contain"
+      className="h-auto max-h-[min(70dvh,40rem)] w-full rounded-[1.5rem] bg-camera object-contain"
     />
   );
 }

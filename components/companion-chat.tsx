@@ -107,7 +107,7 @@ export function CompanionChat({ unavailable = "disabled" }: { unavailable?: keyo
   }
 
   return (
-    <div className="space-y-8">
+    <div className="max-w-3xl space-y-8">
       <PageHeader eyebrow="AI Companion" title="Demo mode">
         <p>{UNAVAILABLE[unavailable]}</p>
         <p>

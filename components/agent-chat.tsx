@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { assessSafety } from "@/lib/agent/safety";
 import { isCompanionResponse } from "@/lib/agent/types";
 import type { CompanionFailure, CompanionSuccess } from "@/lib/agent/types";
 import { createId } from "@/lib/format";
@@ -15,6 +16,8 @@ const PROMPTS = [
   "Help me reflect on my day.",
   "I feel stressed and need a moment.",
   "Help me figure out one small next step.",
+  "Give me a quote.",
+  "Guide me through a breathing exercise.",
 ];
 
 const TOOL_LABELS: Record<string, string> = {
@@ -30,6 +33,7 @@ type Turn = {
   user: string;
   pending: boolean;
   reply?: CompanionSuccess;
+  exercise?: boolean;
   error?: CompanionFailure | { message: string; tool: null };
 };
 
@@ -55,6 +59,11 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
   async function send(text: string) {
     const message = text.trim();
     if (!message || pending) return;
+    if (wantsBreathingExercise(message) && assessSafety(message).level === "ordinary") {
+      setDraft("");
+      setTurns((current) => [...current, { id: createId(), user: message, pending: false, exercise: true }]);
+      return;
+    }
     const history = turns
       .flatMap((turn) =>
         turn.reply?.source === "model"
@@ -80,33 +89,23 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
       if (!isCompanionResponse(body)) {
         setTurns((current) =>
           current.map((turn) =>
-            turn.id === id
-              ? { ...turn, pending: false, error: { message: "The companion returned an unexpected response.", tool: null } }
-              : turn,
+            turn.id === id ? finishWithoutModel(turn, "The companion returned an unexpected response.") : turn,
           ),
         );
         return;
       }
       setTurns((current) =>
-        current.map((turn) =>
-          turn.id === id
-            ? body.ok
-              ? { ...turn, pending: false, reply: body }
-              : { ...turn, pending: false, error: body }
-            : turn,
-        ),
+        current.map((turn) => {
+          if (turn.id !== id) return turn;
+          if (body.ok) return { ...turn, pending: false, reply: body };
+          return finishWithoutModel(turn, body.message, body);
+        }),
       );
     } catch {
       if (!aliveRef.current) return;
       setTurns((current) =>
         current.map((turn) =>
-          turn.id === id
-            ? {
-                ...turn,
-                pending: false,
-                error: { message: "The companion could not be reached. No model reply was received.", tool: null },
-              }
-            : turn,
+          turn.id === id ? finishWithoutModel(turn, "The companion could not be reached. No model reply was received.") : turn,
         ),
       );
     } finally {
@@ -119,29 +118,28 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
     void send(draft);
   }
 
+  const modelNote = fallback
+    ? `Replies come from the Groq model (${model}). If Groq cannot take the request, the same message is sent to Gemini (${fallback}) instead. Sending a message sends that text, and recent model replies in this chat, to whichever of those providers answers.`
+    : `Replies on this page come from the configured Groq model (${model}). Sending a message sends that text, and recent model replies in this chat, to Groq.`;
+
+  const exerciseTurn = [...turns].reverse().find((turn) => turn.exercise);
+
   return (
-    <div className="space-y-8">
+    <div className="max-w-3xl space-y-6">
       <PageHeader eyebrow="AI Companion" title="A moment of support">
-        <p>
-          {fallback
-            ? `Replies come from the Groq model (${model}). If Groq cannot take the request, the same message is sent to Gemini (${fallback}) instead. Sending a message sends that text, and recent model replies in this chat, to whichever of those providers answers.`
-            : `Replies on this page come from the configured Groq model (${model}). Sending a message sends that text, and recent model replies in this chat, to Groq.`}{" "}
-          Photos and saved journal entries are not included.
-        </p>
         <p>
           awarely.ai is a wellness and reflection tool. It is not a therapist, a diagnosis, or an emergency service, and
           it cannot monitor you or send help. The chat stays on this page until you clear it. It is not saved.
         </p>
       </PageHeader>
+      <p className="max-w-2xl leading-relaxed text-muted">
+        Write what would help, or choose a prompt. Replies stay short and ask one question at a time. If a tool runs,
+        its name and status appear with the reply.
+      </p>
 
-      <div className={`${cardClass} flex min-h-[32rem] flex-col`}>
-        <div className="flex-1 space-y-4 p-4 sm:p-6" aria-live="polite" aria-relevant="additions">
-          {turns.length === 0 ? (
-            <p className="leading-relaxed text-muted">
-              Write what would help, or choose a prompt. Replies stay short and ask one question at a time. If a tool
-              runs, its name and status appear with the reply.
-            </p>
-          ) : null}
+      <div className={`${cardClass} flex flex-col`}>
+        {turns.length > 0 ? (
+        <div className="max-h-52 space-y-4 overflow-y-auto p-4" aria-live="polite" aria-relevant="additions">
           <ol className="space-y-4">
             {turns.map((turn) => (
               <li key={turn.id} className="space-y-3">
@@ -170,8 +168,22 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
           </ol>
           <div ref={endRef} />
         </div>
+        ) : null}
 
-        <form onSubmit={onSubmit} className="border-t border-line p-4 sm:p-6">
+        {exerciseTurn ? (
+          <div className="border-t border-line">
+            <BreathingExercise
+              key={exerciseTurn.id}
+              onClose={() => {
+                setTurns((current) =>
+                  current.map((turn) => (turn.id === exerciseTurn.id ? { ...turn, exercise: false } : turn)),
+                );
+              }}
+            />
+          </div>
+        ) : null}
+
+        <form onSubmit={onSubmit} className={`p-4 ${turns.length > 0 ? "border-t border-line" : ""}`}>
           <p className="text-sm font-medium text-foreground">Suggested prompts</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {PROMPTS.map((prompt) => (
@@ -194,7 +206,7 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
                 event.currentTarget.form?.requestSubmit();
               }
             }}
-            className={`${fieldClass} mt-2 min-h-24`}
+            className={`${fieldClass} mt-2 min-h-16`}
             placeholder="What would help right now?"
           />
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -218,6 +230,117 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
           </div>
         </form>
       </div>
+      <p className="max-w-2xl text-sm leading-relaxed text-muted">
+        {modelNote} Photos and saved journal entries are not included.
+      </p>
+    </div>
+  );
+}
+
+function wantsBreathingExercise(text: string): boolean {
+  const breath = /\b(?:breath(?:e|ing)?|breatheing|brething|bretah(?:ing)?)\b/i.test(text);
+  const ask = /\b(?:exerc\w*|excer\w*|eccer\w*|exers\w*|guide|walk|pace)\b/i.test(text);
+  return breath && ask;
+}
+
+function finishWithoutModel(turn: Turn, message: string, error?: CompanionFailure): Turn {
+  return { ...turn, pending: false, error: error ?? { message, tool: null } };
+}
+
+const BREATH_IN = 4;
+const BREATH_OUT = 6;
+const BREATH_ROUNDS = 4;
+
+function BreathingExercise({ onClose }: { onClose: () => void }) {
+  const closeRef = useRef(onClose);
+  const [running, setRunning] = useState(true);
+  const [round, setRound] = useState(1);
+  const [phase, setPhase] = useState<"in" | "out">("in");
+  const [tick, setTick] = useState(1);
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const apply = () => setReduceMotion(query.matches);
+    apply();
+    query.addEventListener("change", apply);
+    return () => query.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    if (!running) return;
+    const limit = phase === "in" ? BREATH_IN : BREATH_OUT;
+    const timer = window.setTimeout(() => {
+      if (tick < limit) {
+        setTick((value) => value + 1);
+        return;
+      }
+      if (phase === "in") {
+        setPhase("out");
+        setTick(1);
+        return;
+      }
+      if (round < BREATH_ROUNDS) {
+        setRound((value) => value + 1);
+        setPhase("in");
+        setTick(1);
+        return;
+      }
+      closeRef.current();
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [running, phase, tick, round]);
+
+  const span = phase === "in" ? BREATH_IN : BREATH_OUT;
+  const scale = phase === "in" ? 0.62 + (tick / span) * 0.38 : 1 - (tick / span) * 0.38;
+  const label = phase === "in" ? "Inhale" : "Exhale";
+
+  return (
+    <div className="relative px-4 py-5 text-foreground">
+      <button
+        type="button"
+        aria-label="Close breathing exercise"
+        onClick={onClose}
+        className="absolute top-3 right-3 grid size-8 place-items-center rounded-full text-muted hover:bg-accent hover:text-foreground"
+      >
+        <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true">
+          <path d="M3.5 3.5 12.5 12.5M12.5 3.5 3.5 12.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+      <div className="pr-10">
+        <p className="text-sm font-medium">Breathing exercise</p>
+        <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted">
+          Four rounds. Breathe in for 4, then out for 6. Stop if you feel dizzy or uncomfortable. This is not a treatment.
+        </p>
+      </div>
+      <div className="mt-5 flex flex-col items-center gap-4">
+        <div
+          aria-hidden="true"
+          className="size-28 rounded-full bg-sage-text motion-safe:transition-transform motion-safe:duration-1000 motion-safe:ease-linear"
+          style={reduceMotion ? undefined : { transform: `scale(${scale})` }}
+        />
+        <p className="text-center">
+          <span className="block text-sm font-medium uppercase tracking-[0.14em]" aria-live="polite">
+            {label}
+          </span>
+          <span aria-hidden="true" className="mt-1 block text-4xl font-medium tabular-nums">
+            {tick}
+          </span>
+        </p>
+        <p className="text-sm text-muted">Round {round} of {BREATH_ROUNDS}</p>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setRunning((value) => !value)}>
+            {running ? "Pause" : "Continue"}
+          </Button>
+          <Button variant="quiet" onClick={onClose}>
+            Stop
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -233,9 +356,9 @@ function errorTitle(error: Turn["error"]): string {
 function ReplyCard({ reply }: { reply: CompanionSuccess }) {
   const safety = reply.source === "safety" || reply.safety?.level === "clear";
   return (
-    <article className={`max-w-[42rem] rounded-[1.5rem] px-4 py-4 ${safety ? "bg-blush text-blush-text" : "bg-sage text-sage-text"}`}>
-      <p className="text-xs font-medium uppercase tracking-[0.14em]">
-        {reply.source === "safety" ? "Fixed safety notice" : reply.provider === "gemini" ? "Gemini reply" : "Model reply"}
+    <article className={`max-w-[42rem] rounded-[1.5rem] px-4 py-4 ${safety ? "bg-blush text-blush-text" : "bg-accent text-accent-text"}`}>
+      <p className={`text-xs font-medium tracking-[0.14em] ${safety ? "uppercase" : "normal-case"}`}>
+        {reply.source === "safety" ? "Fixed safety notice" : reply.provider === "gemini" ? "Gemini reply" : "ziluq"}
       </p>
       <p className="journal-text mt-2 whitespace-pre-wrap leading-relaxed">{reply.message}</p>
       {reply.safety ? (

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { DeleteAccount } from "@/components/delete-account";
 import { ThemeSettings } from "@/components/theme-settings";
 
 export const metadata: Metadata = {
@@ -7,5 +8,10 @@ export const metadata: Metadata = {
 };
 
 export default function SettingsPage() {
-  return <ThemeSettings />;
+  return (
+    <div className="space-y-10">
+      <ThemeSettings />
+      <DeleteAccount />
+    </div>
+  );
 }

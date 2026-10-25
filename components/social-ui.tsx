@@ -93,12 +93,14 @@ export function Avatar({
   hasPhoto,
   size = "md",
   revision = 0,
+  onMissing,
 }: {
   userId: string;
   name: string;
   hasPhoto: boolean;
   size?: "sm" | "md";
   revision?: number;
+  onMissing?: () => void;
 }) {
   const src = hasPhoto ? profilePhotoSrc(userId, revision) : "";
   const [failedSrc, setFailedSrc] = useState("");
@@ -117,7 +119,10 @@ export function Avatar({
     <img
       src={src}
       alt=""
-      onError={() => setFailedSrc(src)}
+      onError={() => {
+        setFailedSrc(src);
+        onMissing?.();
+      }}
       className={`shrink-0 rounded-full bg-accent object-cover ${dimension}`}
     />
   );

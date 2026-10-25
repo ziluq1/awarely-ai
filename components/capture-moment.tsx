@@ -293,7 +293,7 @@ export function CaptureMoment() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3">
         <article className={`${cardClass} flex flex-col p-5`}>
           <h2 className="font-serif text-2xl text-foreground">Take a photo</h2>
           <p className="mt-2 flex-1 text-sm leading-relaxed text-muted">

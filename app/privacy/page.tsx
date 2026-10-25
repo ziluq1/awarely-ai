@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <div className="space-y-8">
+    <div className="max-w-3xl space-y-8">
       <PageHeader eyebrow="Privacy" title="What stays on this device">
         <p>
           A browser copy of Capture and Reflect stays on this device. Images are not analyzed. When you are signed in,

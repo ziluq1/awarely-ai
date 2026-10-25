@@ -39,17 +39,15 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f7f3ec" },
-    { media: "(prefers-color-scheme: dark)", color: "#121212" },
-  ],
-  colorScheme: "light dark",
+  themeColor: "#f7f3ec",
+  colorScheme: "light",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      data-appearance="light"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} h-full antialiased`}
     >
@@ -68,8 +66,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <Suspense fallback={<HeaderFallback />}>
                 <SiteHeader />
               </Suspense>
-              <div className="flex min-w-0 flex-1 flex-col pb-24 md:pb-0">
-                <main id="content" tabIndex={-1} className="mx-auto w-full max-w-5xl flex-1 px-3 py-6 outline-none min-[600px]:px-6 min-[600px]:py-10 md:py-12">
+              <div className="flex min-w-0 flex-1 flex-col pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:pb-0">
+                <main id="content" tabIndex={-1} className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 outline-none sm:px-6 sm:py-8 lg:max-w-6xl lg:px-8 lg:py-12 xl:max-w-7xl 2xl:max-w-[90rem] 2xl:py-16">
                   {children}
                 </main>
                 <SiteFooter />

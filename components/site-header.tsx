@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AuthControls } from "@/components/auth-controls";
 import { useAuth } from "@/components/auth-provider";
@@ -10,38 +10,37 @@ import { unreadCount } from "@/lib/social";
 
 export function SiteHeader() {
   const pathname = usePathname();
-  return <AppNav pathname={pathname} />;
+  const next = useSearchParams().get("next");
+  return <AppNav pathname={pathname} next={pathname === "/login" ? next : null} />;
 }
 
 export function HeaderFallback() {
   return <AppNav pathname={null} />;
 }
 
-function AppNav({ pathname }: { pathname: string | null }) {
+function AppNav({ pathname, next = null }: { pathname: string | null; next?: string | null }) {
   return (
     <>
-      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-card/80 px-3 py-3 md:flex">
+      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-hidden border-r border-line bg-card/80 px-3 py-3 md:flex lg:w-64 xl:w-72">
         <Brand />
-        <div className="mt-3">
-          <AuthControls part="identity" />
-        </div>
-        <nav aria-label="Primary" className="mt-2 flex flex-col">
+        <nav aria-label="Primary" className="mt-3 flex flex-col">
           {NAV.map((item) => (
-            <NavLink key={item.href} href={item.href} label={item.label} current={isCurrent(pathname, item.href)} />
+            <NavLink key={item.href} href={item.href} label={item.label} current={isCurrent(pathname, item.href, next)} />
           ))}
-          <NavLink href="/shared" label="Shared" current={isCurrent(pathname, "/shared")} />
-          <AlertsLink pathname={pathname} current={isCurrent(pathname, "/notifications")} />
+          <NavLink href="/shared" label="Shared timeline" current={isCurrent(pathname, "/shared", next)} />
+          <AlertsLink pathname={pathname} current={isCurrent(pathname, "/notifications", next)} />
           <NavLink href="/settings" label="Settings" current={pathname === "/settings"} />
         </nav>
-        <div className="mt-auto pt-2">
+        <div className="mt-auto space-y-2 pt-2">
+          <AuthControls part="identity" />
           <AuthControls part="logout" />
         </div>
       </aside>
       <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-b border-line/80 bg-background/90 px-3 py-2 backdrop-blur-md md:hidden">
         <Brand compact />
-        <div className="ml-auto flex w-full items-center justify-end gap-2 min-[430px]:w-auto">
+        <div className="ml-auto flex w-full min-w-0 flex-wrap items-center justify-end gap-2 min-[430px]:w-auto min-[430px]:max-w-[calc(100%-8.5rem)]">
           <AuthControls compact />
-          <AlertsLink pathname={pathname} current={isCurrent(pathname, "/notifications")} toolbar />
+          <AlertsLink pathname={pathname} current={isCurrent(pathname, "/notifications", next)} toolbar />
           <NavLink href="/settings" label="Settings" current={pathname === "/settings"} toolbar />
         </div>
       </div>
@@ -51,17 +50,20 @@ function AppNav({ pathname }: { pathname: string | null }) {
         style={{ paddingBottom: "max(0.4rem, env(safe-area-inset-bottom))" }}
       >
         {NAV.map((item) => (
-          <NavLink key={item.href} href={item.href} label={item.short} current={isCurrent(pathname, item.href)} compact />
+          <NavLink key={item.href} href={item.href} label={item.short} current={isCurrent(pathname, item.href, next)} compact />
         ))}
       </nav>
     </>
   );
 }
 
-function isCurrent(pathname: string | null, href: string) {
-  if (!pathname) return false;
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
+const SIGNED_OUT_TABS = ["/timeline", "/friends", "/shared", "/notifications"];
+
+function isCurrent(pathname: string | null, href: string, next?: string | null) {
+  if (pathname && (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`))) return true;
+  if (!next || !SIGNED_OUT_TABS.includes(href)) return false;
+  const path = next.split("?")[0]?.split("#")[0] ?? "";
+  return path === href || path.startsWith(`${href}/`);
 }
 
 function AlertsLink({
@@ -130,7 +132,7 @@ function NavLink({
   compact?: boolean;
   toolbar?: boolean;
 }) {
-  const tone = current ? "bg-accent text-accent-text" : "text-foreground hover:bg-accent/70";
+  const tone = current ? "bg-nav-current text-nav-current-text" : "text-foreground hover:bg-accent";
   return (
     <Link
       href={href}

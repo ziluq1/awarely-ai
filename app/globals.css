@@ -15,6 +15,8 @@
   --danger: #8a2f3a;
   --inverse: #3f345c;
   --inverse-text: #fbf8f4;
+  --nav-current: #6e6580;
+  --nav-current-text: #fbf8f4;
   --camera: #241f2b;
   color-scheme: light;
 }
@@ -35,6 +37,8 @@
     --danger: #ffb4bc;
     --inverse: #efe6ff;
     --inverse-text: #24182f;
+    --nav-current: #c8bddc;
+    --nav-current-text: #24182f;
     --camera: #121212;
     color-scheme: dark;
   }
@@ -63,10 +67,26 @@ html[data-appearance="light"] {
   --color-danger: var(--danger);
   --color-inverse: var(--inverse);
   --color-inverse-text: var(--inverse-text);
+  --color-nav-current: var(--nav-current);
+  --color-nav-current-text: var(--nav-current-text);
   --color-camera: var(--camera);
   --font-sans: var(--font-geist-sans);
   --font-serif: var(--font-newsreader);
   --font-mono: var(--font-geist-mono);
+}
+
+nav a[aria-current="page"] {
+  background-color: var(--nav-current);
+  color: var(--nav-current-text);
+}
+
+html {
+  overflow-x: clip;
+}
+
+img,
+video {
+  max-width: 100%;
 }
 
 body {

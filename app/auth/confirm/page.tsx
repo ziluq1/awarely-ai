@@ -1,14 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ErrorBlock, LoadingBlock, PageHeader, buttonClass } from "@/components/ui";
 import { authExchangeError, authLinkErrorFromProvider, authLinkMessage, isEmailVerified, safeNextPath } from "@/lib/auth";
 import { browserSupabase } from "@/lib/supabase/browser";
 
 export default function ConfirmEmailPage() {
-  const router = useRouter();
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -16,7 +14,7 @@ export default function ConfirmEmailPage() {
     void confirmFromHash().then((result) => {
       if (!alive) return;
       if (result.ok) {
-        router.replace(result.next);
+        window.location.replace(result.next);
         return;
       }
       setMessage(result.message);
@@ -24,7 +22,7 @@ export default function ConfirmEmailPage() {
     return () => {
       alive = false;
     };
-  }, [router]);
+  }, []);
 
   return (
     <div className="mx-auto max-w-lg space-y-8">

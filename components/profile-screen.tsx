@@ -159,6 +159,7 @@ function ProfileBody() {
               name={displayName || profile.displayName}
               hasPhoto={Boolean(profile.avatarPath)}
               revision={photoRevision}
+              onMissing={() => setFormError("The saved profile photo could not be loaded. Try uploading it again.")}
             />
             <div className="min-w-0">
               <p className="truncate font-medium text-foreground">{displayName || profile.displayName}</p>
@@ -171,7 +172,7 @@ function ProfileBody() {
           <input
             id="avatar-file"
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/gif"
             className={`${fieldClass} max-w-full`}
             disabled={saving}
             onChange={(event) => {

@@ -158,7 +158,7 @@ function SharedBody() {
       {!loading && !error && invitations.length ? (
         <section className="space-y-3">
           <h2 className="font-serif text-2xl text-foreground">Invitations</h2>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             {invitations.map((timeline) => (
               <TimelineCard key={timeline.id} timeline={timeline} />
             ))}
@@ -166,7 +166,7 @@ function SharedBody() {
         </section>
       ) : null}
       {!loading && !error && spaces.length ? (
-        <section className="grid gap-4 md:grid-cols-2">
+        <section className="grid gap-4 lg:grid-cols-2">
           {spaces.map((timeline) => (
             <TimelineCard key={timeline.id} timeline={timeline} />
           ))}

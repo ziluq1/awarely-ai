@@ -124,6 +124,9 @@ export function applyAppearance(root: HTMLElement, preference: AppearancePrefere
   for (const key of Object.keys(tokens) as Array<keyof TokenMap>) {
     root.style.setProperty(key, tokens[key]);
   }
+  const current = navCurrent(tokens["--inverse"], tokens["--card"], tokens["--inverse-text"], tokens["--foreground"]);
+  root.style.setProperty("--nav-current", current.background);
+  root.style.setProperty("--nav-current-text", current.text);
   const themeColor = tokens["--background"];
   document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
     meta.setAttribute("content", themeColor);
@@ -213,6 +216,17 @@ function customPalette(accent: string, mode: "light" | "dark"): TokenMap {
     inverseText,
     "#121212",
   );
+}
+
+function navCurrent(inverse: string, card: string, lightText: string, darkText: string): { background: string; text: string } {
+  let weight = 0.48;
+  let background = mix(inverse, card, weight);
+  if (contrast(lightText, background) >= 4.5) return { background, text: lightText };
+  while (weight < 0.72 && contrast(darkText, background) < 4.5) {
+    weight += 0.04;
+    background = mix(inverse, card, weight);
+  }
+  return { background, text: darkText };
 }
 
 function lin(channel: number): number {
@@ -316,14 +330,14 @@ export const APPEARANCE_BOOT = `(function(){
   var walk = ${walk.toString()};
   var lineFor = ${lineFor.toString()};
   var mutedFor = ${mutedFor.toString()};
+  var navCurrent = ${navCurrent.toString()};
   var tokensFor = ${tokensFor.toString()};
   var normalizeAccent = ${normalizeAccent.toString()};
   var resolveMode = ${resolveMode.toString()};
   try {
     var raw = localStorage.getItem(${JSON.stringify(APPEARANCE_KEY)});
     var stored = raw ? JSON.parse(raw) : null;
-    var systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    var appearance = stored && stored.appearance === "dark" ? "dark" : stored && stored.appearance === "light" ? "light" : (systemDark ? "dark" : "light");
+    var appearance = stored && stored.appearance === "dark" ? "dark" : "light";
     if (!stored || stored.appearance !== appearance) {
       var saved = stored && typeof stored === "object" ? stored : {};
       saved.appearance = appearance;
@@ -344,5 +358,8 @@ export const APPEARANCE_BOOT = `(function(){
     for (var key in tokens) {
       if (Object.prototype.hasOwnProperty.call(tokens, key)) root.style.setProperty(key, tokens[key]);
     }
+    var current = navCurrent(tokens["--inverse"], tokens["--card"], tokens["--inverse-text"], tokens["--foreground"]);
+    root.style.setProperty("--nav-current", current.background);
+    root.style.setProperty("--nav-current-text", current.text);
   } catch (error) {}
 })();`;

@@ -426,7 +426,7 @@ function Filters({
   onClear: () => void;
 }) {
   return (
-    <div className={`${cardClass} grid gap-3 p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end`}>
+    <div className={`${cardClass} grid gap-3 p-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end`}>
       <label className="text-sm font-medium text-foreground">
         Mood
         <select value={mood} onChange={(event) => onMood(moodChoice(event.target.value))} className={`${fieldClass} mt-2`}>

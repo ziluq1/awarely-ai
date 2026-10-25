@@ -179,7 +179,7 @@ export function ReflectionForm() {
 
   if (saved) {
     return (
-      <div className="space-y-8">
+      <div className="max-w-3xl space-y-8">
         <PageHeader eyebrow="Reflect" title="What stands out to you about this moment?" />
         <div ref={successRef} tabIndex={-1} role="status" className={`${cardClass} p-6 outline-none sm:p-8`}>
           <h2 className="font-serif text-3xl text-foreground">
@@ -218,7 +218,7 @@ export function ReflectionForm() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="max-w-3xl space-y-8">
       <PageHeader eyebrow="Reflect" title="What stands out to you about this moment?">
         <p>Use your own words. A mood label is optional, and awarely.ai does not choose it from a photo.</p>
       </PageHeader>

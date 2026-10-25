@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { Avatar } from "@/components/social-ui";
@@ -41,8 +42,12 @@ export function AuthControls({ compact = false, part = "full" }: { compact?: boo
           setError("");
           setPending(true);
           void auth.signOut().then((message) => {
-            setPending(false);
-            if (message) setError(message);
+            if (message) {
+              setPending(false);
+              setError(message);
+              return;
+            }
+            window.location.reload();
           });
         }}
       />
@@ -51,28 +56,10 @@ export function AuthControls({ compact = false, part = "full" }: { compact?: boo
 
   if (part === "logout") return null;
 
-  if (compact) {
-    return (
-      <div className="flex items-center gap-1">
-        <Link href="/login" className={buttonClass("quiet", "px-2.5 text-xs min-[380px]:px-3 min-[380px]:text-sm")}>
-          Log in
-        </Link>
-        <Link href="/signup" className={buttonClass("primary", "px-2.5 text-xs min-[380px]:px-3 min-[380px]:text-sm")}>
-          Sign up
-        </Link>
-      </div>
-    );
-  }
-
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <Link href="/login" className={buttonClass("secondary", "px-3")}>
-        Log in
-      </Link>
-      <Link href="/signup" className={buttonClass("primary", "px-3")}>
-        Sign up
-      </Link>
-    </div>
+    <Link href="/login" className={buttonClass("primary", compact ? "px-2.5 text-xs min-[380px]:px-3 min-[380px]:text-sm" : "w-full px-3")}>
+      Log in/Sign up
+    </Link>
   );
 }
 
@@ -91,10 +78,31 @@ function SignedIn({
   error: string;
   onLogout: () => void;
 }) {
+  const name = user.savedName ?? user.name;
+  const pathname = usePathname();
+  const onProfile = pathname === "/profile";
   const logout = (
     <Button variant={compact ? "quiet" : "secondary"} className={compact ? "px-3" : "w-full"} disabled={pending} onClick={onLogout}>
       {pending ? "Logging out…" : "Log out"}
     </Button>
+  );
+  const identity = (
+    <Link
+      href="/profile"
+      aria-label={`Your profile, ${name}`}
+      aria-current={onProfile ? "page" : undefined}
+      className={
+        compact
+          ? "flex min-w-0 items-center gap-2 rounded-full"
+          : `flex min-w-0 items-center gap-3 rounded-2xl border border-line p-3 ${onProfile ? "bg-accent" : "bg-background hover:bg-accent"}`
+      }
+    >
+      <Avatar userId={user.id} name={name} hasPhoto={user.hasAvatar} revision={user.avatarRevision} size={compact ? "sm" : "md"} />
+      <div className="min-w-0">
+        <p className={compact ? "sr-only" : "truncate text-sm font-medium text-foreground"}>{name}</p>
+        {compact ? null : <p className="truncate text-xs text-muted">{user.email}</p>}
+      </div>
+    </Link>
   );
   if (part === "logout") {
     return (
@@ -108,23 +116,12 @@ function SignedIn({
       </div>
     );
   }
+  if (part === "identity") return identity;
   return (
-    <div className={compact ? "flex items-center gap-2" : "rounded-2xl border border-line bg-background p-3"}>
-      <div className={`flex min-w-0 items-center gap-2 ${compact ? "" : "gap-3"}`} aria-label={`Signed in as ${user.savedName ?? user.name}`}>
-        <Avatar
-          userId={user.id}
-          name={user.savedName ?? user.name}
-          hasPhoto={user.hasAvatar}
-          revision={user.avatarRevision}
-          size={compact ? "sm" : "md"}
-        />
-        <div className="min-w-0">
-          <p className={compact ? "sr-only" : "truncate text-sm font-medium text-foreground"}>{user.savedName ?? user.name}</p>
-          {compact ? null : <p className="truncate text-xs text-muted">{user.email}</p>}
-        </div>
-      </div>
-      {part === "identity" ? null : <div className={compact ? "" : "mt-3"}>{logout}</div>}
-      {error && part !== "identity" ? (
+    <div className={compact ? "flex items-center gap-2" : "space-y-3"}>
+      {identity}
+      {logout}
+      {error ? (
         <p className="text-xs text-danger" role="alert">
           {error}
         </p>

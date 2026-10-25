@@ -3,7 +3,7 @@ import Link from "next/link";
 export function SiteFooter() {
   return (
     <footer className="border-t border-line/80">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-8 text-sm leading-relaxed text-muted sm:px-6">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-8 text-sm leading-relaxed text-muted sm:px-6 lg:max-w-6xl lg:px-8 xl:max-w-7xl 2xl:max-w-[90rem]">
         <p>
           awarely.ai is a journaling space, not medical care, a diagnosis, or a crisis service. If you need immediate
           support in the US, call or text 988, or visit{" "}
