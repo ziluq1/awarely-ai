@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "[ ! -f '/home/evan/.cursor/skills/impeccable/scripts/impeccable' ] || '/home/evan/.cursor/skills/impeccable/scripts/impeccable' hook-before-edit",
+        "timeout": 5
+      }
+    ]
+  }
+}
