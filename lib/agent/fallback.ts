@@ -1,5 +1,5 @@
 import { createGeminiReply } from "@/lib/agent/gemini";
-import type { CompanionResponse } from "@/lib/agent/types";
+import type { CompanionFailure, CompanionResponse } from "@/lib/agent/types";
 
 type ReplyInput = {
   message: string;
@@ -26,6 +26,7 @@ export async function withGeminiFallback(
 
 function publish(result: CompanionResponse): CompanionResponse {
   if (result.ok) return result;
-  const { exhausted: _drop, ...rest } = result;
+  const rest: CompanionFailure = { ...result };
+  delete rest.exhausted;
   return rest;
 }

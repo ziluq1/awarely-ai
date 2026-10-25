@@ -5,15 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import type { FormEvent } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 import { Button, ErrorBlock, PageHeader, cardClass, fieldClass } from "@/components/ui";
 import {
-  PASSWORD_RESET_REDIRECT_TO,
-  SIGNUP_EMAIL_REDIRECT_TO,
-  authCallbackUrl,
   authErrorMessage,
   authLinkMessage,
   isEmail,
-  isEmailVerified,
   safeNextPath,
 } from "@/lib/auth";
 import { browserSupabase } from "@/lib/supabase/browser";
@@ -57,6 +54,8 @@ export function AuthScreen({ mode }: { mode: Mode }) {
   const [formError, setFormError] = useState("");
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState<"form" | "google" | "resend" | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileReset, setTurnstileReset] = useState(0);
 
   const nextPath = params.get("next");
 
@@ -83,12 +82,6 @@ export function AuthScreen({ mode }: { mode: Mode }) {
     setFormError("");
     setNotice("");
 
-    const supabase = browserSupabase();
-    if (!supabase) {
-      setFormError("Supabase is not configured. Add the project URL and publishable key, then restart the dev server.");
-      return;
-    }
-
     if (mode !== "reset") {
       if (!isEmail(email)) {
         setFieldError("Enter a valid email address.");
@@ -111,18 +104,24 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       return;
     }
 
+    if (mode !== "reset" && !turnstileToken) {
+      setFormError("Complete the bot-protection check and try again.");
+      return;
+    }
+
     setPending("form");
 
     if (mode === "login") {
-      const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const result = await sendAuthRequest({
+        flow: "login",
+        email: email.trim(),
+        password,
+        turnstileToken,
+      });
       setPending(null);
-      if (error) {
-        setFormError(authErrorMessage(error.message));
-        return;
-      }
-      if (!isEmailVerified(data.user)) {
-        await supabase.auth.signOut();
-        setFormError(authErrorMessage("Email not confirmed"));
+      if (!result.ok) {
+        resetTurnstile();
+        setFormError(result.message);
         return;
       }
       reloadPage("/");
@@ -130,18 +129,20 @@ export function AuthScreen({ mode }: { mode: Mode }) {
     }
 
     if (mode === "signup") {
-      const { data, error } = await supabase.auth.signUp({
+      const result = await sendAuthRequest({
+        flow: "signup",
         email: email.trim(),
         password,
-        options: { emailRedirectTo: SIGNUP_EMAIL_REDIRECT_TO },
+        turnstileToken,
       });
       setPending(null);
-      if (error) {
-        setFormError(authErrorMessage(error.message));
+      if (!result.ok) {
+        resetTurnstile();
+        setFormError(result.message);
         return;
       }
-      if (!data.session || !isEmailVerified(data.user)) {
-        if (data.session) await supabase.auth.signOut();
+      if (result.status === "confirmation_sent") {
+        resetTurnstile();
         setNotice("Check your email for a confirmation link. After you confirm, you can log in.");
         return;
       }
@@ -150,18 +151,27 @@ export function AuthScreen({ mode }: { mode: Mode }) {
     }
 
     if (mode === "forgot") {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: PASSWORD_RESET_REDIRECT_TO,
+      const result = await sendAuthRequest({
+        flow: "forgot",
+        email: email.trim(),
+        turnstileToken,
       });
       setPending(null);
-      if (error) {
-        setFormError(authErrorMessage(error.message));
+      resetTurnstile();
+      if (!result.ok) {
+        setFormError(result.message);
         return;
       }
       setNotice("If that email can receive mail from Supabase, a reset link is on its way.");
       return;
     }
 
+    const supabase = browserSupabase();
+    if (!supabase) {
+      setPending(null);
+      setFormError("Supabase is not configured. Add the project URL and publishable key, then restart the dev server.");
+      return;
+    }
     const { error } = await supabase.auth.updateUser({ password });
     setPending(null);
     if (error) {
@@ -175,20 +185,23 @@ export function AuthScreen({ mode }: { mode: Mode }) {
     if (pending) return;
     setFormError("");
     setNotice("");
-    const supabase = browserSupabase();
-    if (!supabase) {
-      setFormError("Supabase is not configured. Add the project URL and publishable key, then restart the dev server.");
+    if (!turnstileToken || (mode !== "login" && mode !== "signup")) {
+      setFormError("Complete the bot-protection check and try again.");
       return;
     }
     setPending("google");
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: authCallbackUrl(window.location.origin, "oauth") },
+    const result = await sendAuthRequest({
+      flow: "oauth",
+      source: mode,
+      turnstileToken,
     });
-    if (error) {
+    if (!result.ok || !result.url) {
+      resetTurnstile();
       setPending(null);
-      setFormError(authErrorMessage(error.message));
+      setFormError(result.ok ? "Google sign-in could not start. Try again." : result.message);
+      return;
     }
+    window.location.assign(result.url);
   }
 
   async function resendConfirmation() {
@@ -198,24 +211,30 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       setFieldError("Enter the email on the account, then send the confirmation email again.");
       return;
     }
-    const supabase = browserSupabase();
-    if (!supabase) {
-      setFormError("Supabase is not configured. Add the project URL and publishable key, then restart the dev server.");
+    if (!turnstileToken || (mode !== "login" && mode !== "signup")) {
+      setFormError("Complete the bot-protection check and try again.");
       return;
     }
     setPending("resend");
     setFormError("");
-    const { error } = await supabase.auth.resend({
-      type: "signup",
+    const result = await sendAuthRequest({
+      flow: "resend",
       email: address,
-      options: { emailRedirectTo: SIGNUP_EMAIL_REDIRECT_TO },
+      source: mode,
+      turnstileToken,
     });
     setPending(null);
-    if (error) {
-      setFormError(authErrorMessage(error.message));
+    resetTurnstile();
+    if (!result.ok) {
+      setFormError(result.message);
       return;
     }
     setNotice("Check your email for a new confirmation link. Use the newest one.");
+  }
+
+  function resetTurnstile() {
+    setTurnstileToken("");
+    setTurnstileReset((value) => value + 1);
   }
 
   const copy = COPY[mode];
@@ -244,13 +263,23 @@ export function AuthScreen({ mode }: { mode: Mode }) {
           </p>
         ) : null}
         {canResend ? (
-          <Button variant="secondary" className="w-full" disabled={pending !== null} onClick={() => void resendConfirmation()}>
+          <Button
+            variant="secondary"
+            className="w-full"
+            disabled={pending !== null || !turnstileToken}
+            onClick={() => void resendConfirmation()}
+          >
             {pending === "resend" ? "Sending confirmation email…" : "Resend confirmation email"}
           </Button>
         ) : null}
 
         {mode === "login" || mode === "signup" ? (
-          <Button variant="secondary" className="w-full" disabled={pending !== null} onClick={() => void continueWithGoogle()}>
+          <Button
+            variant="secondary"
+            className="w-full"
+            disabled={pending !== null || !turnstileToken}
+            onClick={() => void continueWithGoogle()}
+          >
             <GoogleMark />
             {pending === "google" ? "Opening Google…" : "Continue with Google"}
           </Button>
@@ -321,7 +350,15 @@ export function AuthScreen({ mode }: { mode: Mode }) {
             </p>
           ) : null}
 
-          <Button type="submit" className="w-full" disabled={pending !== null}>
+          {mode === "reset" ? null : (
+            <TurnstileWidget
+              action={mode}
+              resetSignal={turnstileReset}
+              onToken={setTurnstileToken}
+            />
+          )}
+
+          <Button type="submit" className="w-full" disabled={pending !== null || (mode !== "reset" && !turnstileToken)}>
             {submitLabel(mode, pending === "form")}
           </Button>
         </form>
@@ -357,6 +394,40 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       </div>
     </div>
   );
+}
+
+type AuthRequestBody =
+  | { flow: "login" | "signup"; email: string; password: string; turnstileToken: string }
+  | { flow: "forgot"; email: string; turnstileToken: string }
+  | { flow: "resend"; email: string; source: "login" | "signup"; turnstileToken: string }
+  | { flow: "oauth"; source: "login" | "signup"; turnstileToken: string };
+
+type AuthRequestResult =
+  | { ok: true; status: string; url?: string }
+  | { ok: false; message: string };
+
+async function sendAuthRequest(body: AuthRequestBody): Promise<AuthRequestResult> {
+  try {
+    const response = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const result = (await response.json()) as Partial<AuthRequestResult> & { message?: string };
+    if (!response.ok || result.ok !== true) {
+      return {
+        ok: false,
+        message: typeof result.message === "string" ? result.message : "Account access could not be completed. Try again.",
+      };
+    }
+    return {
+      ok: true,
+      status: typeof result.status === "string" ? result.status : "complete",
+      url: typeof result.url === "string" ? result.url : undefined,
+    };
+  } catch {
+    return { ok: false, message: "awarely.ai could not complete that request. Check your connection and try again." };
+  }
 }
 
 function reloadPage(path: string) {

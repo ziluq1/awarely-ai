@@ -43,18 +43,30 @@ export function Dashboard() {
   const peak = Math.max(1, ...savedMoods.map((mood) => mood.count));
 
   useEffect(() => {
-    if (auth.status === "loading") return;
-    if (auth.status !== "signed-in" || !auth.verified) {
-      setAccountMoods([]);
-      setPhotoTimes([]);
-      setMoodNote("");
-      setMoodLoading(false);
-      setStreakLoading(false);
-      return;
-    }
     let alive = true;
-    setMoodLoading(true);
-    setStreakLoading(true);
+    if (auth.status === "loading") {
+      return () => {
+        alive = false;
+      };
+    }
+    if (auth.status !== "signed-in" || !auth.verified) {
+      queueMicrotask(() => {
+        if (!alive) return;
+        setAccountMoods([]);
+        setPhotoTimes([]);
+        setMoodNote("");
+        setMoodLoading(false);
+        setStreakLoading(false);
+      });
+      return () => {
+        alive = false;
+      };
+    }
+    queueMicrotask(() => {
+      if (!alive) return;
+      setMoodLoading(true);
+      setStreakLoading(true);
+    });
     listSavedMoods().then((result) => {
       if (!alive) return;
       setMoodLoading(false);

@@ -19,7 +19,11 @@ export function DeleteAccount() {
   useEffect(() => {
     if (!open) return;
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape" && !pending) close();
+      if (event.key === "Escape" && !pending) {
+        setOpen(false);
+        setConfirmation("");
+        setError("");
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
