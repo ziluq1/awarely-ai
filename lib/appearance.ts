@@ -131,6 +131,21 @@ export function applyAppearance(root: HTMLElement, preference: AppearancePrefere
   document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
     meta.setAttribute("content", themeColor);
   });
+  setThemeIcon(tokens["--inverse"], tokens["--inverse-text"]);
+}
+
+function setThemeIcon(background: string, text: string): void {
+  if (!/^#[0-9a-fA-F]{6}$/.test(background) || !/^#[0-9a-fA-F]{6}$/.test(text)) return;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="${background}"/><text x="16" y="23" text-anchor="middle" font-family="Georgia,serif" font-size="22" fill="${text}">A</text></svg>`;
+  const href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  link.type = "image/svg+xml";
+  link.href = href;
 }
 
 function palette(
@@ -331,6 +346,7 @@ export const APPEARANCE_BOOT = `(function(){
   var lineFor = ${lineFor.toString()};
   var mutedFor = ${mutedFor.toString()};
   var navCurrent = ${navCurrent.toString()};
+  var setThemeIcon = ${setThemeIcon.toString()};
   var tokensFor = ${tokensFor.toString()};
   var normalizeAccent = ${normalizeAccent.toString()};
   var resolveMode = ${resolveMode.toString()};
@@ -361,5 +377,6 @@ export const APPEARANCE_BOOT = `(function(){
     var current = navCurrent(tokens["--inverse"], tokens["--card"], tokens["--inverse-text"], tokens["--foreground"]);
     root.style.setProperty("--nav-current", current.background);
     root.style.setProperty("--nav-current-text", current.text);
+    setThemeIcon(tokens["--inverse"], tokens["--inverse-text"]);
   } catch (error) {}
 })();`;
