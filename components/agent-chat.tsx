@@ -11,6 +11,38 @@ import { SafetyNotice } from "@/components/safety-notice";
 import { ChatIdentity } from "@/components/social-ui";
 import { Button, ErrorBlock, PageHeader, cardClass, fieldClass } from "@/components/ui";
 
+const PACE_KEY = "mindmate.companion.pace.v1";
+const CONVO_KEY = "mindmate.companion.convo.v1";
+const COOLDOWN_MS = 5_000;
+
+function paceNote(now: number, convo: number): string {
+  if (convo >= 10) return "This conversation has 10 messages. Clear the chat to start a new one.";
+  const stamps = readStamps(now);
+  const last = stamps.at(-1) ?? 0;
+  const wait = COOLDOWN_MS - (now - last);
+  if (wait > 0) return `Wait ${Math.ceil(wait / 1000)} seconds before the next message.`;
+  if (stamps.filter((stamp) => now - stamp < 60_000).length >= 5) return "Five messages a minute is the limit. Wait, then try again.";
+  if (stamps.length >= 20) return "Twenty messages a day is the limit. Try again after the oldest message is 24 hours old.";
+  return "";
+}
+
+function readStamps(now: number): number[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PACE_KEY) ?? "[]") as unknown;
+    return Array.isArray(raw) ? raw.filter((stamp): stamp is number => typeof stamp === "number" && now - stamp < 86_400_000) : [];
+  } catch {
+    return [];
+  }
+}
+
+function convoCount(): number {
+  try {
+    return Number(sessionStorage.getItem(CONVO_KEY) ?? 0) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 const PROMPTS = [
   "I'm overwhelmed by schoolwork.",
   "Help me reflect on my day.",
@@ -42,6 +74,8 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
+  const [limitNote, setLimitNote] = useState("");
+  const [convo, setConvo] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
   const aliveRef = useRef(true);
 
@@ -56,9 +90,26 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
     endRef.current?.scrollIntoView({ block: "nearest" });
   }, [turns, pending]);
 
+  useEffect(() => {
+    const count = convoCount();
+    setConvo(count);
+    setLimitNote(paceNote(Date.now(), count));
+  }, []);
+
+  useEffect(() => {
+    if (!limitNote) return;
+    const timer = window.setInterval(() => setLimitNote(paceNote(Date.now(), convoCount())), 1000);
+    return () => window.clearInterval(timer);
+  }, [limitNote]);
+
   async function send(text: string) {
     const message = text.trim();
     if (!message || pending) return;
+    const note = paceNote(Date.now(), convoCount());
+    if (note && !(wantsBreathingExercise(message) && assessSafety(message).level === "ordinary")) {
+      setLimitNote(note);
+      return;
+    }
     if (wantsBreathingExercise(message) && assessSafety(message).level === "ordinary") {
       setDraft("");
       setTurns((current) => [...current, { id: createId(), user: message, pending: false, exercise: true }]);
@@ -75,6 +126,12 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
       )
       .slice(-8);
     const id = createId();
+    const now = Date.now();
+    const nextConvo = convoCount() + 1;
+    localStorage.setItem(PACE_KEY, JSON.stringify([...readStamps(now), now]));
+    sessionStorage.setItem(CONVO_KEY, String(nextConvo));
+    setConvo(nextConvo);
+    setLimitNote(paceNote(now + 1, nextConvo));
     setDraft("");
     setPending(true);
     setTurns((current) => [...current, { id, user: message, pending: true }]);
@@ -185,20 +242,14 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
 
         <form onSubmit={onSubmit} className={`p-4 ${turns.length > 0 ? "border-t border-line" : ""}`}>
           <p className="text-sm font-medium text-foreground">Suggested prompts</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {PROMPTS.slice(0, 4).map((prompt) => (
-              <Button key={prompt} variant="secondary" disabled={pending} onClick={() => void send(prompt)}>
-                {prompt}
-              </Button>
-            ))}
-          </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
-            {PROMPTS.slice(4).map((prompt) => (
-              <Button key={prompt} variant="secondary" className="w-full whitespace-normal px-3" disabled={pending} onClick={() => void send(prompt)}>
+            {PROMPTS.map((prompt) => (
+              <Button key={prompt} variant="secondary" className="h-auto min-h-12 w-full whitespace-normal px-3 py-2 text-sm leading-snug" disabled={pending} onClick={() => void send(prompt)}>
                 {prompt}
               </Button>
             ))}
           </div>
+          {limitNote ? <p className="mt-3 text-sm text-muted" role="status">{limitNote}</p> : null}
           <label htmlFor={fieldId} className="mt-5 block text-sm font-medium text-foreground">
             Your message
           </label>
@@ -213,7 +264,8 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
                 event.currentTarget.form?.requestSubmit();
               }
             }}
-            className={`${fieldClass} mt-2 min-h-16`}
+            disabled={pending || convo >= 10}
+            className={`${fieldClass} mt-2 min-h-16 disabled:opacity-60`}
             placeholder="What would help right now?"
           />
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -221,13 +273,16 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
               {draft.length} / {COMPANION_NOTE_LIMIT}. Enter sends. Shift Enter adds a line.
             </p>
             <div className="flex gap-2">
-              <Button type="submit" disabled={pending || !draft.trim()}>
+              <Button type="submit" disabled={pending || !draft.trim() || Boolean(limitNote)}>
                 {pending ? "Sending…" : "Send"}
               </Button>
               <Button
                 variant="quiet"
                 disabled={pending || turns.length === 0}
                 onClick={() => {
+                  sessionStorage.removeItem(CONVO_KEY);
+                  setConvo(0);
+                  setLimitNote(paceNote(Date.now(), 0));
                   setTurns([]);
                 }}
               >
