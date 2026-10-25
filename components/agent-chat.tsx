@@ -35,6 +35,10 @@ function readStamps(now: number): number[] {
   }
 }
 
+function clock(): number {
+  return Date.now();
+}
+
 function convoCount(): number {
   try {
     return Number(sessionStorage.getItem(CONVO_KEY) ?? 0) || 0;
@@ -91,9 +95,11 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
   }, [turns, pending]);
 
   useEffect(() => {
-    const count = convoCount();
-    setConvo(count);
-    setLimitNote(paceNote(Date.now(), count));
+    queueMicrotask(() => {
+      const count = convoCount();
+      setConvo(count);
+      setLimitNote(paceNote(clock(), count));
+    });
   }, []);
 
   useEffect(() => {
@@ -105,7 +111,7 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
   async function send(text: string) {
     const message = text.trim();
     if (!message || pending) return;
-    const note = paceNote(Date.now(), convoCount());
+    const note = paceNote(clock(), convoCount());
     if (note && !(wantsBreathingExercise(message) && assessSafety(message).level === "ordinary")) {
       setLimitNote(note);
       return;
@@ -126,7 +132,7 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
       )
       .slice(-8);
     const id = createId();
-    const now = Date.now();
+    const now = clock();
     const nextConvo = convoCount() + 1;
     localStorage.setItem(PACE_KEY, JSON.stringify([...readStamps(now), now]));
     sessionStorage.setItem(CONVO_KEY, String(nextConvo));

@@ -25,30 +25,35 @@ export async function POST(request: Request) {
   const input = await readRequest(request);
   if (!input.ok) return failure(input.message, 400);
 
-  const turnstile = await verifyTurnstile({
-    token: input.value.turnstileToken,
-    expectedAction: turnstileAction(input.value),
-    expectedHostname: new URL(request.url).hostname,
-    remoteIp: requestIp(request.headers),
-  });
-  if (!turnstile.ok) {
-    if (turnstile.reason === "config") {
-      return failure("Bot protection is not configured. Try again later.", 503, "turnstile");
+  const value = input.value;
+  const captchaToken = value.turnstileToken;
+
+  if (value.flow === "oauth") {
+    const turnstile = await verifyTurnstile({
+      token: captchaToken,
+      expectedAction: turnstileAction(value),
+      expectedHostname: new URL(request.url).hostname,
+      remoteIp: requestIp(request.headers),
+    });
+    if (!turnstile.ok) {
+      if (turnstile.reason === "config") {
+        return failure("Bot protection is not configured. Try again later.", 503, "turnstile");
+      }
+      if (turnstile.reason === "unavailable") {
+        return failure("Bot protection could not be checked. Check your connection and try again.", 503, "turnstile");
+      }
+      return failure("The bot-protection check expired or was not accepted. Complete it again.", 403, "turnstile");
     }
-    if (turnstile.reason === "unavailable") {
-      return failure("Bot protection could not be checked. Check your connection and try again.", 503, "turnstile");
-    }
-    return failure("The bot-protection check expired or was not accepted. Complete it again.", 403, "turnstile");
   }
 
   const supabase = await serverSupabase();
   if (!supabase) return failure("Account access is not configured. Try again later.", 503);
 
-  const value = input.value;
   if (value.flow === "login") {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: value.email,
       password: value.password,
+      options: { captchaToken },
     });
     if (error) return failure(authErrorMessage(error.message), 401);
     if (!isEmailVerified(data.user)) {
@@ -62,7 +67,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.signUp({
       email: value.email,
       password: value.password,
-      options: { emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup") },
+      options: { emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup"), captchaToken },
     });
     if (error) return failure(authErrorMessage(error.message), 400);
     if (!data.session || !isEmailVerified(data.user)) {
@@ -75,6 +80,7 @@ export async function POST(request: Request) {
   if (value.flow === "forgot") {
     const { error } = await supabase.auth.resetPasswordForEmail(value.email, {
       redirectTo: authCallbackUrl(new URL(request.url).origin, "recovery"),
+      captchaToken,
     });
     if (error) return failure(authErrorMessage(error.message), 400);
     return NextResponse.json({ ok: true, status: "reset_sent" });
@@ -84,7 +90,7 @@ export async function POST(request: Request) {
     const { error } = await supabase.auth.resend({
       type: "signup",
       email: value.email,
-      options: { emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup") },
+      options: { emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup"), captchaToken },
     });
     if (error) return failure(authErrorMessage(error.message), 400);
     return NextResponse.json({ ok: true, status: "confirmation_resent" });
