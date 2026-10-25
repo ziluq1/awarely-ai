@@ -186,8 +186,15 @@ export function AgentChat({ model, fallback }: { model: string; fallback: string
         <form onSubmit={onSubmit} className={`p-4 ${turns.length > 0 ? "border-t border-line" : ""}`}>
           <p className="text-sm font-medium text-foreground">Suggested prompts</p>
           <div className="mt-2 flex flex-wrap gap-2">
-            {PROMPTS.map((prompt) => (
+            {PROMPTS.slice(0, 4).map((prompt) => (
               <Button key={prompt} variant="secondary" disabled={pending} onClick={() => void send(prompt)}>
+                {prompt}
+              </Button>
+            ))}
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {PROMPTS.slice(4).map((prompt) => (
+              <Button key={prompt} variant="secondary" className="w-full whitespace-normal px-3" disabled={pending} onClick={() => void send(prompt)}>
                 {prompt}
               </Button>
             ))}
