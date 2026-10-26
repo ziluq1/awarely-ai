@@ -310,18 +310,14 @@ function CompanionShortcut() {
             : "The model is not configured. The companion page offers prepared exercises instead of AI replies.";
 
   return (
-    <section aria-labelledby="companion-heading" className={`${cardClass} grid gap-6 p-6 lg:grid-cols-[1.4fr_0.8fr] lg:p-8`}>
-      <div>
-        <h2 id="companion-heading" className="font-serif text-3xl text-foreground">
-          AI wellness companion
-        </h2>
-        <p className="mt-3 max-w-xl leading-relaxed text-muted">{detail}</p>
-      </div>
-      <div className="flex items-end">
-        <Link href="/companion" className={buttonClass("secondary", "w-full lg:w-auto")}>
-          Open the AI companion
-        </Link>
-      </div>
+    <section aria-labelledby="companion-heading" className={`${cardClass} p-6 sm:p-8`}>
+      <h2 id="companion-heading" className="font-serif text-3xl text-foreground">
+        AI wellness companion
+      </h2>
+      <p className="mt-3 leading-relaxed text-muted">{detail}</p>
+      <Link href="/companion" className={buttonClass("secondary", "mt-6 w-full")}>
+        Open the AI companion
+      </Link>
     </section>
   );
 }
