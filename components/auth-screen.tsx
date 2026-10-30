@@ -119,8 +119,8 @@ export function AuthScreen({ mode }: { mode: Mode }) {
         turnstileToken,
       });
       setPending(null);
+      resetTurnstile();
       if (!result.ok) {
-        resetTurnstile();
         setFormError(result.message);
         return;
       }
@@ -136,13 +136,12 @@ export function AuthScreen({ mode }: { mode: Mode }) {
         turnstileToken,
       });
       setPending(null);
+      resetTurnstile();
       if (!result.ok) {
-        resetTurnstile();
         setFormError(result.message);
         return;
       }
       if (result.status === "confirmation_sent") {
-        resetTurnstile();
         setNotice("Check your email for a confirmation link. After you confirm, you can log in.");
         return;
       }

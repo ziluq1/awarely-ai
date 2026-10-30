@@ -1,7 +1,6 @@
 import { connection, NextResponse } from "next/server";
 import { authCallbackUrl, authErrorMessage, isEmail, isEmailVerified } from "@/lib/auth";
 import { serverSupabase } from "@/lib/supabase/server";
-import { requestIp, verifyTurnstile } from "@/lib/turnstile";
 
 const MAX_BODY_BYTES = 16_384;
 const MAX_EMAIL_LENGTH = 320;
@@ -27,24 +26,6 @@ export async function POST(request: Request) {
 
   const value = input.value;
   const captchaToken = value.turnstileToken;
-
-  if (value.flow === "oauth") {
-    const turnstile = await verifyTurnstile({
-      token: captchaToken,
-      expectedAction: turnstileAction(value),
-      expectedHostname: new URL(request.url).hostname,
-      remoteIp: requestIp(request.headers),
-    });
-    if (!turnstile.ok) {
-      if (turnstile.reason === "config") {
-        return failure("Bot protection is not configured. Try again later.", 503, "turnstile");
-      }
-      if (turnstile.reason === "unavailable") {
-        return failure("Bot protection could not be checked. Check your connection and try again.", 503, "turnstile");
-      }
-      return failure("The bot-protection check expired or was not accepted. Complete it again.", 403, "turnstile");
-    }
-  }
 
   const supabase = await serverSupabase();
   if (!supabase) return failure("Account access is not configured. Try again later.", 503);
@@ -96,6 +77,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, status: "confirmation_resent" });
   }
 
+  // Google OAuth does not accept captchaToken. The client still requires a completed
+  // Turnstile check before this route runs; Google then owns the identity challenge.
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
@@ -105,11 +88,6 @@ export async function POST(request: Request) {
   });
   if (error || !data.url) return failure(authErrorMessage(error?.message ?? "OAuth could not start"), 400);
   return NextResponse.json({ ok: true, status: "oauth", url: data.url });
-}
-
-function turnstileAction(input: AuthRequest): "login" | "signup" | "forgot" {
-  if (input.flow === "oauth" || input.flow === "resend") return input.source;
-  return input.flow;
 }
 
 async function readRequest(

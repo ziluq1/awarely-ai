@@ -39,7 +39,7 @@ export function TurnstileWidget({
   if (!siteKey) {
     return (
       <p role="alert" className="rounded-2xl bg-blush px-4 py-3 text-sm leading-relaxed text-blush-text">
-        Bot protection is not configured. Try again later.
+        Bot protection is not configured. Add NEXT_PUBLIC_TURNSTILE_SITE_KEY, then restart the app.
       </p>
     );
   }
