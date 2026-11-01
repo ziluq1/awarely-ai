@@ -104,11 +104,6 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       return;
     }
 
-    if (mode !== "reset" && !turnstileToken) {
-      setFormError("Complete the bot-protection check and try again.");
-      return;
-    }
-
     setPending("form");
 
     if (mode === "login") {
@@ -181,13 +176,9 @@ export function AuthScreen({ mode }: { mode: Mode }) {
   }
 
   async function continueWithGoogle() {
-    if (pending) return;
+    if (pending || (mode !== "login" && mode !== "signup")) return;
     setFormError("");
     setNotice("");
-    if (!turnstileToken || (mode !== "login" && mode !== "signup")) {
-      setFormError("Complete the bot-protection check and try again.");
-      return;
-    }
     setPending("google");
     const result = await sendAuthRequest({
       flow: "oauth",
@@ -210,10 +201,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       setFieldError("Enter the email on the account, then send the confirmation email again.");
       return;
     }
-    if (!turnstileToken || (mode !== "login" && mode !== "signup")) {
-      setFormError("Complete the bot-protection check and try again.");
-      return;
-    }
+    if (mode !== "login" && mode !== "signup") return;
     setPending("resend");
     setFormError("");
     const result = await sendAuthRequest({
@@ -265,7 +253,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
           <Button
             variant="secondary"
             className="w-full"
-            disabled={pending !== null || !turnstileToken}
+            disabled={pending !== null}
             onClick={() => void resendConfirmation()}
           >
             {pending === "resend" ? "Sending confirmation email…" : "Resend confirmation email"}
@@ -276,7 +264,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
           <Button
             variant="secondary"
             className="w-full"
-            disabled={pending !== null || !turnstileToken}
+            disabled={pending !== null}
             onClick={() => void continueWithGoogle()}
           >
             <GoogleMark />
@@ -357,7 +345,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
             />
           )}
 
-          <Button type="submit" className="w-full" disabled={pending !== null || (mode !== "reset" && !turnstileToken)}>
+          <Button type="submit" className="w-full" disabled={pending !== null}>
             {submitLabel(mode, pending === "form")}
           </Button>
         </form>

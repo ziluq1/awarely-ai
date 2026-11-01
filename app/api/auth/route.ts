@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   if (!input.ok) return failure(input.message, 400);
 
   const value = input.value;
-  const captchaToken = value.turnstileToken;
+  const captchaToken = value.turnstileToken || undefined;
 
   const supabase = await serverSupabase();
   if (!supabase) return failure("Account access is not configured. Try again later.", 503);
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: value.email,
       password: value.password,
-      options: { captchaToken },
+      options: captchaToken ? { captchaToken } : undefined,
     });
     if (error) return failure(authErrorMessage(error.message), 401);
     if (!isEmailVerified(data.user)) {
@@ -48,7 +48,10 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.signUp({
       email: value.email,
       password: value.password,
-      options: { emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup"), captchaToken },
+      options: {
+        emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup"),
+        ...(captchaToken ? { captchaToken } : {}),
+      },
     });
     if (error) return failure(authErrorMessage(error.message), 400);
     if (!data.session || !isEmailVerified(data.user)) {
@@ -61,7 +64,7 @@ export async function POST(request: Request) {
   if (value.flow === "forgot") {
     const { error } = await supabase.auth.resetPasswordForEmail(value.email, {
       redirectTo: authCallbackUrl(new URL(request.url).origin, "recovery"),
-      captchaToken,
+      ...(captchaToken ? { captchaToken } : {}),
     });
     if (error) return failure(authErrorMessage(error.message), 400);
     return NextResponse.json({ ok: true, status: "reset_sent" });
@@ -71,14 +74,16 @@ export async function POST(request: Request) {
     const { error } = await supabase.auth.resend({
       type: "signup",
       email: value.email,
-      options: { emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup"), captchaToken },
+      options: {
+        emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup"),
+        ...(captchaToken ? { captchaToken } : {}),
+      },
     });
     if (error) return failure(authErrorMessage(error.message), 400);
     return NextResponse.json({ ok: true, status: "confirmation_resent" });
   }
 
-  // Google OAuth does not accept captchaToken. The client still requires a completed
-  // Turnstile check before this route runs; Google then owns the identity challenge.
+  // Google OAuth does not accept captchaToken.
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
@@ -103,8 +108,8 @@ async function readRequest(
 
   const input = body as Record<string, unknown>;
   const flow = input.flow;
+  // Turnstile is optional while Supabase CAPTCHA is off. Pass through when present.
   const turnstileToken = text(input.turnstileToken);
-  if (!turnstileToken) return { ok: false, message: "Complete the bot-protection check and try again." };
 
   if (flow === "oauth") {
     const source = authSource(input.source);

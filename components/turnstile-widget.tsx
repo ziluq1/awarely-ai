@@ -16,7 +16,7 @@ export function TurnstileWidget({
   const ref = useRef<TurnstileInstance>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<"compact" | "flexible" | null>(null);
-  const [message, setMessage] = useState("Checking your browser…");
+  const [message, setMessage] = useState("");
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? "";
 
   useEffect(() => {
@@ -33,16 +33,11 @@ export function TurnstileWidget({
     if (resetSignal === 0) return;
     ref.current?.reset();
     onToken("");
-    queueMicrotask(() => setMessage("Checking your browser…"));
+    queueMicrotask(() => setMessage(""));
   }, [resetSignal, onToken]);
 
-  if (!siteKey) {
-    return (
-      <p role="alert" className="rounded-2xl bg-blush px-4 py-3 text-sm leading-relaxed text-blush-text">
-        Bot protection is not configured. Add NEXT_PUBLIC_TURNSTILE_SITE_KEY, then restart the app.
-      </p>
-    );
-  }
+  // Optional: missing site key or a failed widget must never block the form.
+  if (!siteKey) return null;
 
   return (
     <div className="space-y-2">
@@ -62,19 +57,25 @@ export function TurnstileWidget({
             }}
             onExpire={() => {
               onToken("");
-              setMessage("The bot-protection check expired. It is checking again.");
+              setMessage("Bot check expired. You can still continue, or wait for it to refresh.");
               ref.current?.reset();
             }}
             onError={() => {
               onToken("");
-              setMessage("The bot-protection check failed. Refresh the page and try again.");
+              setMessage("Bot check could not load. You can still continue without it.");
+            }}
+            onUnsupported={() => {
+              onToken("");
+              setMessage("Bot check is unavailable here. You can still continue without it.");
             }}
           />
         ) : null}
       </div>
-      <p role="status" aria-live="polite" className={message ? "text-sm text-muted" : "sr-only"}>
-        {message || "Bot-protection check complete."}
-      </p>
+      {message ? (
+        <p role="status" aria-live="polite" className="text-sm text-muted">
+          {message}
+        </p>
+      ) : null}
     </div>
   );
 }
