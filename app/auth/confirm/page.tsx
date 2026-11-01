@@ -11,8 +11,9 @@ export default function ConfirmEmailPage() {
 
   useEffect(() => {
     let alive = true;
-    void confirmFromHash().then((result) => {
+    void confirmFromUrl().then((result) => {
       if (!alive) return;
+      if (result.ok === "redirect") return;
       if (result.ok) {
         window.location.replace(result.next);
         return;
@@ -42,9 +43,20 @@ export default function ConfirmEmailPage() {
   );
 }
 
-async function confirmFromHash(): Promise<{ ok: true; next: string } | { ok: false; message: string }> {
+type ConfirmResult = { ok: true; next: string } | { ok: false; message: string } | { ok: "redirect" };
+
+async function confirmFromUrl(): Promise<ConfirmResult> {
+  const search = new URLSearchParams(window.location.search);
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const nextParam = new URLSearchParams(window.location.search).get("next");
+
+  // Modern Supabase links use ?code= or ?token_hash= on /auth/callback.
+  if (search.has("code") || search.has("token_hash") || search.has("error_code") || search.has("error")) {
+    const dest = new URL("/auth/callback", window.location.origin);
+    search.forEach((value, key) => dest.searchParams.set(key, value));
+    window.location.replace(dest.toString());
+    return { ok: "redirect" };
+  }
+
   const providerError = hash.get("error") || hash.get("error_code");
   if (providerError) {
     const code = authLinkErrorFromProvider(hash.get("error_code"), hash.get("error_description"));
@@ -54,7 +66,11 @@ async function confirmFromHash(): Promise<{ ok: true; next: string } | { ok: fal
   const accessToken = hash.get("access_token");
   const refreshToken = hash.get("refresh_token");
   if (!accessToken || !refreshToken) {
-    return { ok: false, message: authLinkMessage("invalid") };
+    return {
+      ok: false,
+      message:
+        "That confirmation link is missing its sign-in details. Open the newest email from Awarely, tap Confirm in that message, and stay in the same browser. If it still fails, go back to log in and resend the confirmation email.",
+    };
   }
 
   const supabase = browserSupabase();
@@ -66,6 +82,6 @@ async function confirmFromHash(): Promise<{ ok: true; next: string } | { ok: fal
     await supabase.auth.signOut();
     return { ok: false, message: authLinkMessage("unverified") };
   }
-  const next = hash.get("type") === "recovery" ? "/reset-password" : safeNextPath(nextParam);
+  const next = hash.get("type") === "recovery" ? "/reset-password" : safeNextPath(search.get("next"));
   return { ok: true, next };
 }

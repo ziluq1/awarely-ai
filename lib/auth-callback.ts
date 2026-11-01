@@ -45,7 +45,14 @@ export async function finishAuthCallback(request: Request, forcedNext?: string):
   }
 
   const code = url.searchParams.get("code");
-  if (!code) return NextResponse.redirect(new URL("/login?error=invalid", url.origin));
+  if (!code) {
+    // Hash tokens never reach the server. Send the browser to /auth/confirm so
+    // AuthHashForwarder / the confirm page can finish an implicit-flow link.
+    const confirm = new URL("/auth/confirm", url.origin);
+    const nextParam = url.searchParams.get("next");
+    if (nextParam) confirm.searchParams.set("next", nextParam);
+    return NextResponse.redirect(confirm);
+  }
 
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) return NextResponse.redirect(new URL(`/login?error=${authExchangeError(error.message)}`, url.origin));
