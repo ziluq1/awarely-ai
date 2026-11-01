@@ -46,12 +46,17 @@ export async function finishAuthCallback(request: Request, forcedNext?: string):
 
   const code = url.searchParams.get("code");
   if (!code) {
-    // Hash tokens never reach the server. Send the browser to /auth/confirm so
-    // AuthHashForwarder / the confirm page can finish an implicit-flow link.
-    const confirm = new URL("/auth/confirm", url.origin);
+    // Bare /auth/confirm without token_hash means the email template is missing
+    // ?token_hash={{ .TokenHash }}&type=email — send the user back to log in.
+    if (url.pathname === "/auth/confirm" || url.pathname.startsWith("/auth/confirm/")) {
+      return NextResponse.redirect(new URL("/login?error=invalid", url.origin));
+    }
+    // Hash tokens never reach the server. Send the browser to /auth/hash so the
+    // client page can finish an implicit-flow link when the fragment is present.
+    const hashPage = new URL("/auth/hash", url.origin);
     const nextParam = url.searchParams.get("next");
-    if (nextParam) confirm.searchParams.set("next", nextParam);
-    return NextResponse.redirect(confirm);
+    if (nextParam) hashPage.searchParams.set("next", nextParam);
+    return NextResponse.redirect(hashPage);
   }
 
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);

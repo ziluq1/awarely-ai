@@ -174,6 +174,16 @@ export function authErrorMessage(message: string): string {
 }
 
 export function safeNextPath(value: string | null): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return "/";
-  return value;
+  if (!value) return "/";
+  if (value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")) return value;
+  try {
+    const url = new URL(value);
+    if (url.username || url.password || url.hash) return "/";
+    if (url.origin !== PRODUCTION_APP_ORIGIN && !isLocalOrigin(url.origin)) return "/";
+    const path = `${url.pathname}${url.search}`;
+    if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return "/";
+    return path === "" ? "/" : path;
+  } catch {
+    return "/";
+  }
 }

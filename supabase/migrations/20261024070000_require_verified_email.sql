@@ -5,9 +5,15 @@
 -- Also set Authentication → URL configuration:
 --   Site URL: https://awarely-ai.vercel.app
 --   Redirect URLs: https://awarely-ai.vercel.app/auth/callback
---                  https://awarely-ai.vercel.app/auth/callback/recovery
+--                  https://awarely-ai.vercel.app/auth/callback/**
+--                  https://awarely-ai.vercel.app/auth/confirm
 --                  http://localhost:3000/auth/callback
---                  http://localhost:3000/auth/callback/recovery
+--                  http://localhost:3000/auth/callback/**
+--                  http://localhost:3000/auth/confirm
+--
+-- Authentication → Email templates → Confirm signup (PKCE / SSR):
+--   <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/">Confirm email</a>
+-- Same pattern for Magic link and Reset password (use type=recovery and next=/reset-password for reset).
 
 begin;
 

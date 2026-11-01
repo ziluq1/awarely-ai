@@ -61,7 +61,12 @@ export async function proxy(request: NextRequest) {
 }
 
 function isAuthPath(pathname: string): boolean {
-  return pathname === "/auth/callback" || pathname.startsWith("/auth/callback/") || pathname === "/auth/confirm";
+  return (
+    pathname === "/auth/callback" ||
+    pathname.startsWith("/auth/callback/") ||
+    pathname === "/auth/confirm" ||
+    pathname === "/auth/hash"
+  );
 }
 
 function shouldForwardAuth(url: URL): boolean {

@@ -6,8 +6,8 @@ export function AuthHashForwarder() {
   useEffect(() => {
     const hash = window.location.hash;
     if (!hash.includes("access_token=") && !hash.includes("error_code=") && !hash.includes("error_description=")) return;
-    if (window.location.pathname === "/auth/confirm") return;
-    const dest = new URL("/auth/confirm", window.location.origin);
+    if (window.location.pathname === "/auth/hash") return;
+    const dest = new URL("/auth/hash", window.location.origin);
     dest.hash = hash.startsWith("#") ? hash.slice(1) : hash;
     const next = `${window.location.pathname}${window.location.search}`;
     if (next.startsWith("/") && !next.startsWith("//") && next !== "/") dest.searchParams.set("next", next);

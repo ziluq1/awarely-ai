@@ -6,12 +6,12 @@ import { ErrorBlock, LoadingBlock, PageHeader, buttonClass } from "@/components/
 import { authExchangeError, authLinkErrorFromProvider, authLinkMessage, isEmailVerified, safeNextPath } from "@/lib/auth";
 import { browserSupabase } from "@/lib/supabase/browser";
 
-export default function ConfirmEmailPage() {
+export default function AuthHashPage() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     let alive = true;
-    void confirmFromUrl().then((result) => {
+    void finishHashSession().then((result) => {
       if (!alive) return;
       if (result.ok === "redirect") return;
       if (result.ok) {
@@ -27,29 +27,28 @@ export default function ConfirmEmailPage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-8">
-      <PageHeader eyebrow="Account" title="Confirming your email">
-        <p>This page finishes the link from your email.</p>
+      <PageHeader eyebrow="Account" title="Finishing sign-in">
+        <p>This page completes a link that returned sign-in tokens in the address bar.</p>
       </PageHeader>
       {message ? (
-        <ErrorBlock title="That link did not confirm the email" message={message}>
+        <ErrorBlock title="That link did not finish sign-in" message={message}>
           <Link className={buttonClass("secondary")} href="/login">
             Back to log in
           </Link>
         </ErrorBlock>
       ) : (
-        <LoadingBlock label="Checking the confirmation link." />
+        <LoadingBlock label="Checking the sign-in link." />
       )}
     </div>
   );
 }
 
-type ConfirmResult = { ok: true; next: string } | { ok: false; message: string } | { ok: "redirect" };
+type HashResult = { ok: true; next: string } | { ok: false; message: string } | { ok: "redirect" };
 
-async function confirmFromUrl(): Promise<ConfirmResult> {
+async function finishHashSession(): Promise<HashResult> {
   const search = new URLSearchParams(window.location.search);
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 
-  // Modern Supabase links use ?code= or ?token_hash= on /auth/callback.
   if (search.has("code") || search.has("token_hash") || search.has("error_code") || search.has("error")) {
     const dest = new URL("/auth/callback", window.location.origin);
     search.forEach((value, key) => dest.searchParams.set(key, value));
@@ -69,7 +68,7 @@ async function confirmFromUrl(): Promise<ConfirmResult> {
     return {
       ok: false,
       message:
-        "That confirmation link is missing its sign-in details. Open the newest email from Awarely, tap Confirm in that message, and stay in the same browser. If it still fails, go back to log in and resend the confirmation email.",
+        "That link is missing its sign-in details. Open the newest email from Awarely, tap Confirm in that message, and stay in the same browser. If it still fails, go back to log in and resend the confirmation email.",
     };
   }
 
