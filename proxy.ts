@@ -3,8 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { safeNextPath } from "@/lib/auth";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 
-const PROTECTED_PAGES = [/^\/timeline(?:\/|$)/, /^\/friends(?:\/|$)/, /^\/shared(?:\/|$)/, /^\/profile(?:\/|$)/, /^\/notifications(?:\/|$)/];
-const PROTECTED_APIS = [/^\/api\/(?:journal-photo|profile-photo|shared-photo|timeline-cover|account)(?:\/|$)/];
+const PROTECTED_PAGES = [/^\/friends(?:\/|$)/, /^\/shared(?:\/|$)/, /^\/profile(?:\/|$)/, /^\/notifications(?:\/|$)/];
+const PROTECTED_APIS = [/^\/api\/(?:journal-photo|journal|profile-photo|shared-photo|timeline-cover|account)(?:\/|$)/];
 
 export async function proxy(request: NextRequest) {
   const url = request.nextUrl;

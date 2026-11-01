@@ -2,14 +2,17 @@
 
 /* eslint-disable @next/next/no-img-element -- Private photo links expire, so these images stay on a plain img. */
 
-import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { CustomFeelingField } from "@/components/custom-feeling";
+import { GuestBanner } from "@/components/guest-banner";
 import { ShareEntryButton } from "@/components/share-entry-button";
+import { SignInPrompt } from "@/components/sign-in-prompt";
 import { TimelineCollage } from "@/components/timeline-collage";
 import { Button, EmptyBlock, ErrorBlock, LoadingBlock, buttonClass, cardClass, fieldClass } from "@/components/ui";
+import { useGuestTimelineDraft } from "@/hooks/use-guest-timeline-draft";
+import type { GuestTimelineDraft } from "@/hooks/use-guest-timeline-draft";
 import {
   createAccountEntry,
   deleteAccountEntry,
@@ -46,6 +49,7 @@ const emptyDraft: Draft = {
 
 export function AccountTimeline() {
   const auth = useAuth();
+  const guestDraft = useGuestTimelineDraft();
   const [entries, setEntries] = useState<AccountEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -55,8 +59,10 @@ export function AccountTimeline() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<AccountEntry | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AccountEntry | null>(null);
+  const [signInPromptOpen, setSignInPromptOpen] = useState(false);
 
   const accountReady = auth.status === "signed-in" && auth.verified;
+  const isGuest = auth.status === "anonymous";
 
   async function refresh() {
     if (!accountReady) {
@@ -137,8 +143,10 @@ export function AccountTimeline() {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.18em] text-accent-text">Timeline</p>
-          <h1 className="mt-3 font-serif text-4xl text-foreground sm:text-5xl">Your Timeline</h1>
-          <p className="mt-3 max-w-2xl leading-relaxed text-muted">
+          <h1 className="mt-3 font-serif text-4xl text-foreground sm:text-5xl lg:text-[clamp(2.75rem,4vw,3.75rem)]">
+            Your Timeline
+          </h1>
+          <p className="mt-3 max-w-2xl text-base leading-relaxed text-muted sm:text-lg">
             Moments you save here stay with your account. Newest entries are first. Photos stay private and open through a
             temporary link.
           </p>
@@ -148,6 +156,8 @@ export function AccountTimeline() {
         </a>
       </header>
 
+      {isGuest && !guestDraft.bannerDismissed ? <GuestBanner onDismiss={guestDraft.dismissBanner} /> : null}
+
       {auth.status === "loading" || (accountReady && loading) ? (
         <LoadingBlock label="Opening your timeline." />
       ) : null}
@@ -155,20 +165,6 @@ export function AccountTimeline() {
         <ErrorBlock title="The timeline could not be loaded" message={error}>
           <Button onClick={() => void refresh()}>Try again</Button>
         </ErrorBlock>
-      ) : null}
-
-      {auth.status === "anonymous" ? (
-        <EmptyBlock
-          title="Sign in to keep a timeline"
-          message="Entries saved here belong to your account, so they stay after you log out, refresh, or open awarely.ai on another device."
-        >
-          <Link href="/login" className={buttonClass("primary")}>
-            Log in
-          </Link>
-          <Link href="/signup" className={buttonClass("secondary")}>
-            Sign up
-          </Link>
-        </EmptyBlock>
       ) : null}
 
       {accountReady && !loading && !error && entries.length === 0 ? (
@@ -235,10 +231,26 @@ export function AccountTimeline() {
       ) : null}
 
       <section id="capture-moment" className="scroll-mt-24">
-        <CaptureForm signedIn={accountReady} onSaved={saved} />
+        <CaptureForm
+          signedIn={accountReady}
+          restored={guestDraft.restored}
+          onRestored={guestDraft.consumeRestored}
+          onGuestSave={async (draft) => {
+            await guestDraft.stashDraft({
+              text: draft.text,
+              mood: draft.mood,
+              custom: draft.custom,
+              skipPhoto: draft.skipPhoto,
+              photo: draft.photo,
+            });
+            setSignInPromptOpen(true);
+          }}
+          onSaved={saved}
+        />
       </section>
 
       {lightbox?.photoUrl ? <Lightbox entry={lightbox} onClose={() => setLightbox(null)} /> : null}
+      {signInPromptOpen ? <SignInPrompt onClose={() => setSignInPromptOpen(false)} /> : null}
       {pendingDelete ? (
         <ConfirmDelete
           entry={pendingDelete}
@@ -480,28 +492,54 @@ function EntryEditor({
   );
 }
 
-function CaptureForm({ signedIn, onSaved }: { signedIn: boolean; onSaved: (entry: AccountEntry) => void }) {
+function CaptureForm({
+  signedIn,
+  restored,
+  onRestored,
+  onGuestSave,
+  onSaved,
+}: {
+  signedIn: boolean;
+  restored: GuestTimelineDraft | null;
+  onRestored: () => void;
+  onGuestSave: (draft: Draft) => Promise<void>;
+  onSaved: (entry: AccountEntry) => void;
+}) {
+  const [initial, setInitial] = useState<Draft>(emptyDraft);
+  const [formKey, setFormKey] = useState(0);
+
+  useEffect(() => {
+    if (!restored) return;
+    let cancelled = false;
+    void (async () => {
+      const next = await draftFromGuest(restored);
+      if (cancelled) return;
+      setInitial(next);
+      setFormKey((value) => value + 1);
+      onRestored();
+      window.setTimeout(() => {
+        document.getElementById("capture-moment")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 50);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [restored, onRestored]);
+
   return (
     <div className={`${cardClass} p-5 sm:p-8`}>
-      <h2 className="font-serif text-3xl text-foreground">Capture This Moment</h2>
-      <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
+      <h2 className="font-serif text-3xl text-foreground sm:text-4xl">Capture This Moment</h2>
+      <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted sm:text-base">
         Take a photo or choose one, look at it, then write what stands out. You can also skip the photo. The date and time
         are saved for you.
       </p>
-      {signedIn ? null : (
-        <p className="mt-4 text-sm text-muted">
-          <Link className="font-medium text-accent-text underline decoration-line underline-offset-4" href="/login">
-            Log in
-          </Link>{" "}
-          before saving. The words stay in this form until you do.
-        </p>
-      )}
       <EntryFields
-        initial={emptyDraft}
+        key={formKey}
+        initial={initial}
         existing={null}
         submitLabel="Save Entry"
+        onRequireSignIn={signedIn ? undefined : onGuestSave}
         onSubmit={async (draft, onProgress) => {
-          if (!signedIn) return { ok: false, message: "Log in before saving to your account." };
           if (!draft.photo && !draft.skipPhoto) {
             return { ok: false, message: "Add a photo, or choose Skip photo." };
           }
@@ -524,6 +562,7 @@ function EntryFields({
   existing,
   submitLabel,
   onCancel,
+  onRequireSignIn,
   onSubmit,
   onSaved,
 }: {
@@ -531,6 +570,7 @@ function EntryFields({
   existing: AccountEntry | null;
   submitLabel: string;
   onCancel?: () => void;
+  onRequireSignIn?: (draft: Draft) => void | Promise<void>;
   onSubmit: (draft: Draft, onProgress: (label: string) => void) => Promise<{ ok: true; value: AccountEntry } | { ok: false; message: string }>;
   onSaved: (entry: AccountEntry) => void;
 }) {
@@ -705,6 +745,10 @@ function EntryFields({
     event.preventDefault();
     if (progress) return;
     setError("");
+    if (onRequireSignIn) {
+      await onRequireSignIn(draft);
+      return;
+    }
     setProgress("Preparing entry…");
     try {
       const result = await onSubmit(draft, setProgress);
@@ -972,6 +1016,29 @@ function localDay(iso: string): string {
 
 function revokePreview(url: string | null) {
   if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+}
+
+async function draftFromGuest(restored: GuestTimelineDraft): Promise<Draft> {
+  let photo: Blob | null = null;
+  let previewUrl: string | null = null;
+  if (restored.photoDataUrl) {
+    try {
+      photo = await dataUrlToJpegBlob(restored.photoDataUrl);
+      previewUrl = restored.photoDataUrl;
+    } catch {
+      photo = null;
+      previewUrl = null;
+    }
+  }
+  return {
+    text: restored.text,
+    mood: restored.mood,
+    custom: restored.custom,
+    photo,
+    previewUrl,
+    skipPhoto: restored.skipPhoto && !photo,
+    removePhoto: false,
+  };
 }
 
 function releaseStream(streamRef: { current: MediaStream | null }, videoRef: { current: HTMLVideoElement | null }) {

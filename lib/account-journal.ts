@@ -127,41 +127,53 @@ export async function createAccountEntry(input: {
 }): Promise<JournalResult<AccountEntry>> {
   const parsed = parseDraft(input.journalText, input.customFeeling);
   if (!parsed.ok) return parsed;
-  const ready = await readyClient();
-  if (!ready.ok) return ready;
-  const id = crypto.randomUUID();
-  let photoPath: string | null = null;
-  if (input.photo) {
-    input.onProgress("Uploading photo…");
-    const uploaded = await uploadPhoto(ready.value.supabase, ready.value.userId, id, input.photo);
-    if (!uploaded.ok) return uploaded;
-    photoPath = uploaded.value;
+
+  input.onProgress(input.photo ? "Uploading photo…" : "Saving entry…");
+  const form = new FormData();
+  form.set("journalText", parsed.value.journalText);
+  form.set("mood", input.mood ?? "");
+  form.set("customFeeling", parsed.value.customFeeling ?? "");
+  if (input.photo) form.set("photo", input.photo, "photo.jpg");
+
+  let response: Response;
+  try {
+    response = await fetch("/api/journal", {
+      method: "POST",
+      body: form,
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, message: "The save request could not reach the server. Try again." };
   }
-  input.onProgress("Saving entry…");
-  const { data, error } = await ready.value.supabase
-    .from("journal_entries")
-    .insert({
-      id,
-      user_id: ready.value.userId,
-      mood: input.mood,
-      custom_feeling: parsed.value.customFeeling,
-      journal_text: parsed.value.journalText,
-      photo_path: photoPath,
-    })
-    .select("id, created_at, mood, custom_feeling, journal_text, photo_path")
-    .single();
-  if (error) {
-    if (photoPath) await ready.value.supabase.storage.from(PHOTO_BUCKET).remove([photoPath]);
-    return { ok: false, message: journalError(error.message, error.code) };
+
+  let body: unknown = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
   }
-  const row = oneEntryRow(data);
-  if (!row) {
-    if (photoPath) await ready.value.supabase.storage.from(PHOTO_BUCKET).remove([photoPath]);
-    return { ok: false, message: "Supabase saved the entry, but the reply was missing the expected fields." };
+
+  if (response.status === 401) {
+    return { ok: false, message: "Sign in to save your timeline." };
   }
-  const linked = await requirePhotoLink(ready.value.supabase, row.id, photoPath, { kind: "create" });
-  if (!linked.ok) return linked;
-  return { ok: true, value: toEntry(row, linked.value) };
+
+  if (
+    body &&
+    typeof body === "object" &&
+    "ok" in body &&
+    (body as { ok: unknown }).ok === true &&
+    "entry" in body &&
+    isAccountEntry((body as { entry: unknown }).entry)
+  ) {
+    return { ok: true, value: (body as { entry: AccountEntry }).entry };
+  }
+
+  const message =
+    body && typeof body === "object" && "message" in body && typeof (body as { message: unknown }).message === "string"
+      ? (body as { message: string }).message
+      : "Supabase could not save that journal change. Try again.";
+  return { ok: false, message };
 }
 
 export async function updateAccountEntry(input: {
@@ -327,6 +339,20 @@ function isEntryRow(value: unknown): value is EntryRow {
     (row.mood === null || typeof row.mood === "string") &&
     (row.custom_feeling === null || typeof row.custom_feeling === "string") &&
     (row.photo_path === null || typeof row.photo_path === "string")
+  );
+}
+
+function isAccountEntry(value: unknown): value is AccountEntry {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.id === "string" &&
+    typeof entry.createdAt === "string" &&
+    typeof entry.journalText === "string" &&
+    (entry.mood === null || typeof entry.mood === "string") &&
+    (entry.customFeeling === null || typeof entry.customFeeling === "string") &&
+    (entry.photoPath === null || typeof entry.photoPath === "string") &&
+    (entry.photoUrl === null || typeof entry.photoUrl === "string")
   );
 }
 
