@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import type { FormEvent } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { TurnstileWidget } from "@/components/turnstile-widget";
 import { Button, ErrorBlock, PageHeader, cardClass, fieldClass } from "@/components/ui";
 import {
   authErrorMessage,
@@ -21,12 +20,12 @@ const COPY: Record<Mode, { eyebrow: string; title: string; lead: string }> = {
   login: {
     eyebrow: "Account",
     title: "Log in",
-    lead: "Use the email and password for your awarely.ai account, or continue with Google.",
+    lead: "Use the email and password for your awarely.ai account.",
   },
   signup: {
     eyebrow: "Account",
     title: "Sign up",
-    lead: "Create an account with email and a password, or continue with Google.",
+    lead: "Create an account with email and a password.",
   },
   forgot: {
     eyebrow: "Account",
@@ -53,9 +52,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
   const [fieldError, setFieldError] = useState("");
   const [formError, setFormError] = useState("");
   const [notice, setNotice] = useState("");
-  const [pending, setPending] = useState<"form" | "google" | "resend" | null>(null);
-  const [turnstileToken, setTurnstileToken] = useState("");
-  const [turnstileReset, setTurnstileReset] = useState(0);
+  const [pending, setPending] = useState<"form" | "resend" | null>(null);
 
   const nextPath = params.get("next");
 
@@ -111,10 +108,8 @@ export function AuthScreen({ mode }: { mode: Mode }) {
         flow: "login",
         email: email.trim(),
         password,
-        turnstileToken,
       });
       setPending(null);
-      resetTurnstile();
       if (!result.ok) {
         setFormError(result.message);
         return;
@@ -128,10 +123,8 @@ export function AuthScreen({ mode }: { mode: Mode }) {
         flow: "signup",
         email: email.trim(),
         password,
-        turnstileToken,
       });
       setPending(null);
-      resetTurnstile();
       if (!result.ok) {
         setFormError(result.message);
         return;
@@ -148,10 +141,8 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       const result = await sendAuthRequest({
         flow: "forgot",
         email: email.trim(),
-        turnstileToken,
       });
       setPending(null);
-      resetTurnstile();
       if (!result.ok) {
         setFormError(result.message);
         return;
@@ -175,25 +166,6 @@ export function AuthScreen({ mode }: { mode: Mode }) {
     router.replace("/");
   }
 
-  async function continueWithGoogle() {
-    if (pending || (mode !== "login" && mode !== "signup")) return;
-    setFormError("");
-    setNotice("");
-    setPending("google");
-    const result = await sendAuthRequest({
-      flow: "oauth",
-      source: mode,
-      turnstileToken,
-    });
-    if (!result.ok || !result.url) {
-      resetTurnstile();
-      setPending(null);
-      setFormError(result.ok ? "Google sign-in could not start. Try again." : result.message);
-      return;
-    }
-    window.location.assign(result.url);
-  }
-
   async function resendConfirmation() {
     if (pending) return;
     const address = email.trim() || auth.user?.email || "";
@@ -208,20 +180,13 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       flow: "resend",
       email: address,
       source: mode,
-      turnstileToken,
     });
     setPending(null);
-    resetTurnstile();
     if (!result.ok) {
       setFormError(result.message);
       return;
     }
     setNotice("Check your email for a new confirmation link. Use the newest one.");
-  }
-
-  function resetTurnstile() {
-    setTurnstileToken("");
-    setTurnstileReset((value) => value + 1);
   }
 
   const copy = COPY[mode];
@@ -258,22 +223,6 @@ export function AuthScreen({ mode }: { mode: Mode }) {
           >
             {pending === "resend" ? "Sending confirmation email…" : "Resend confirmation email"}
           </Button>
-        ) : null}
-
-        {mode === "login" || mode === "signup" ? (
-          <Button
-            variant="secondary"
-            className="w-full"
-            disabled={pending !== null}
-            onClick={() => void continueWithGoogle()}
-          >
-            <GoogleMark />
-            {pending === "google" ? "Opening Google…" : "Continue with Google"}
-          </Button>
-        ) : null}
-
-        {mode === "login" || mode === "signup" ? (
-          <p className="text-center text-xs uppercase tracking-[0.16em] text-muted">or use email</p>
         ) : null}
 
         <form className="space-y-4" onSubmit={(event) => void onSubmit(event)} aria-busy={pending === "form"} noValidate>
@@ -337,14 +286,6 @@ export function AuthScreen({ mode }: { mode: Mode }) {
             </p>
           ) : null}
 
-          {mode === "reset" ? null : (
-            <TurnstileWidget
-              action={mode}
-              resetSignal={turnstileReset}
-              onToken={setTurnstileToken}
-            />
-          )}
-
           <Button type="submit" className="w-full" disabled={pending !== null}>
             {submitLabel(mode, pending === "form")}
           </Button>
@@ -384,13 +325,12 @@ export function AuthScreen({ mode }: { mode: Mode }) {
 }
 
 type AuthRequestBody =
-  | { flow: "login" | "signup"; email: string; password: string; turnstileToken: string }
-  | { flow: "forgot"; email: string; turnstileToken: string }
-  | { flow: "resend"; email: string; source: "login" | "signup"; turnstileToken: string }
-  | { flow: "oauth"; source: "login" | "signup"; turnstileToken: string };
+  | { flow: "login" | "signup"; email: string; password: string }
+  | { flow: "forgot"; email: string }
+  | { flow: "resend"; email: string; source: "login" | "signup" };
 
 type AuthRequestResult =
-  | { ok: true; status: string; url?: string }
+  | { ok: true; status: string }
   | { ok: false; message: string };
 
 async function sendAuthRequest(body: AuthRequestBody): Promise<AuthRequestResult> {
@@ -410,7 +350,6 @@ async function sendAuthRequest(body: AuthRequestBody): Promise<AuthRequestResult
     return {
       ok: true,
       status: typeof result.status === "string" ? result.status : "complete",
-      url: typeof result.url === "string" ? result.url : undefined,
     };
   } catch {
     return { ok: false, message: "awarely.ai could not complete that request. Check your connection and try again." };
@@ -491,28 +430,5 @@ function PasswordField({
         </button>
       </div>
     </div>
-  );
-}
-
-function GoogleMark() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4">
-      <path
-        fill="currentColor"
-        d="M21.6 12.23c0-.74-.07-1.45-.19-2.14H12v4.05h5.38a4.6 4.6 0 0 1-2 3.02v2.5h3.23c1.89-1.74 2.99-4.3 2.99-7.43Z"
-      />
-      <path
-        fill="currentColor"
-        d="M12 22c2.7 0 4.96-.9 6.62-2.44l-3.23-2.5c-.9.6-2.04.96-3.39.96-2.61 0-4.82-1.76-5.61-4.13H3.05v2.58A10 10 0 0 0 12 22Z"
-      />
-      <path
-        fill="currentColor"
-        d="M6.39 13.89A6 6 0 0 1 6.08 12c0-.66.11-1.29.31-1.89V7.53H3.05A10 10 0 0 0 2 12c0 1.61.39 3.14 1.05 4.47l3.34-2.58Z"
-      />
-      <path
-        fill="currentColor"
-        d="M12 5.98c1.47 0 2.79.5 3.83 1.5l2.87-2.87C16.95 2.99 14.7 2 12 2A10 10 0 0 0 3.05 7.53l3.34 2.58C7.18 7.74 9.39 5.98 12 5.98Z"
-      />
-    </svg>
   );
 }

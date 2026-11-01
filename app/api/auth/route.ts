@@ -7,11 +7,10 @@ const MAX_EMAIL_LENGTH = 320;
 const MAX_PASSWORD_LENGTH = 1_024;
 
 type AuthRequest =
-  | { flow: "login"; email: string; password: string; turnstileToken: string }
-  | { flow: "signup"; email: string; password: string; turnstileToken: string }
-  | { flow: "forgot"; email: string; turnstileToken: string }
-  | { flow: "resend"; email: string; source: "login" | "signup"; turnstileToken: string }
-  | { flow: "oauth"; source: "login" | "signup"; turnstileToken: string };
+  | { flow: "login"; email: string; password: string }
+  | { flow: "signup"; email: string; password: string }
+  | { flow: "forgot"; email: string }
+  | { flow: "resend"; email: string; source: "login" | "signup" };
 
 export async function POST(request: Request) {
   await connection();
@@ -25,8 +24,6 @@ export async function POST(request: Request) {
   if (!input.ok) return failure(input.message, 400);
 
   const value = input.value;
-  const captchaToken = value.turnstileToken || undefined;
-
   const supabase = await serverSupabase();
   if (!supabase) return failure("Account access is not configured. Try again later.", 503);
 
@@ -34,7 +31,6 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: value.email,
       password: value.password,
-      options: captchaToken ? { captchaToken } : undefined,
     });
     if (error) return failure(authErrorMessage(error.message), 401);
     if (!isEmailVerified(data.user)) {
@@ -48,10 +44,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.signUp({
       email: value.email,
       password: value.password,
-      options: {
-        emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup"),
-        ...(captchaToken ? { captchaToken } : {}),
-      },
+      options: { emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup") },
     });
     if (error) return failure(authErrorMessage(error.message), 400);
     if (!data.session || !isEmailVerified(data.user)) {
@@ -64,35 +57,18 @@ export async function POST(request: Request) {
   if (value.flow === "forgot") {
     const { error } = await supabase.auth.resetPasswordForEmail(value.email, {
       redirectTo: authCallbackUrl(new URL(request.url).origin, "recovery"),
-      ...(captchaToken ? { captchaToken } : {}),
     });
     if (error) return failure(authErrorMessage(error.message), 400);
     return NextResponse.json({ ok: true, status: "reset_sent" });
   }
 
-  if (value.flow === "resend") {
-    const { error } = await supabase.auth.resend({
-      type: "signup",
-      email: value.email,
-      options: {
-        emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup"),
-        ...(captchaToken ? { captchaToken } : {}),
-      },
-    });
-    if (error) return failure(authErrorMessage(error.message), 400);
-    return NextResponse.json({ ok: true, status: "confirmation_resent" });
-  }
-
-  // Google OAuth does not accept captchaToken.
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: authCallbackUrl(new URL(request.url).origin, "oauth"),
-      skipBrowserRedirect: true,
-    },
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email: value.email,
+    options: { emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup") },
   });
-  if (error || !data.url) return failure(authErrorMessage(error?.message ?? "OAuth could not start"), 400);
-  return NextResponse.json({ ok: true, status: "oauth", url: data.url });
+  if (error) return failure(authErrorMessage(error.message), 400);
+  return NextResponse.json({ ok: true, status: "confirmation_resent" });
 }
 
 async function readRequest(
@@ -108,27 +84,18 @@ async function readRequest(
 
   const input = body as Record<string, unknown>;
   const flow = input.flow;
-  // Turnstile is optional while Supabase CAPTCHA is off. Pass through when present.
-  const turnstileToken = text(input.turnstileToken);
-
-  if (flow === "oauth") {
-    const source = authSource(input.source);
-    return source
-      ? { ok: true, value: { flow, source, turnstileToken } }
-      : { ok: false, message: "Refresh the page and try again." };
-  }
 
   const email = text(input.email).toLowerCase();
   if (!isEmail(email) || email.length > MAX_EMAIL_LENGTH) {
     return { ok: false, message: "Enter a valid email address." };
   }
 
-  if (flow === "forgot") return { ok: true, value: { flow, email, turnstileToken } };
+  if (flow === "forgot") return { ok: true, value: { flow, email } };
 
   if (flow === "resend") {
     const source = authSource(input.source);
     return source
-      ? { ok: true, value: { flow, email, source, turnstileToken } }
+      ? { ok: true, value: { flow, email, source } }
       : { ok: false, message: "Refresh the page and try again." };
   }
 
@@ -137,13 +104,13 @@ async function readRequest(
     if (!password || password.length > MAX_PASSWORD_LENGTH) {
       return { ok: false, message: "Enter your password." };
     }
-    return { ok: true, value: { flow, email, password, turnstileToken } };
+    return { ok: true, value: { flow, email, password } };
   }
   if (flow === "signup") {
     if (password.length < 8 || password.length > MAX_PASSWORD_LENGTH) {
       return { ok: false, message: "Use between 8 and 1,024 characters for your password." };
     }
-    return { ok: true, value: { flow, email, password, turnstileToken } };
+    return { ok: true, value: { flow, email, password } };
   }
   return { ok: false, message: "Refresh the page and try again." };
 }

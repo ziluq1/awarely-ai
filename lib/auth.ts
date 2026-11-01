@@ -82,11 +82,9 @@ export function authEmailOrigin(browserOrigin: string): string {
   return configuredSiteOrigin() ?? origin;
 }
 
-export function authCallbackUrl(browserOrigin: string, flow: "signup" | "recovery" | "oauth" = "signup"): string {
-  if (flow === "signup") return SIGNUP_EMAIL_REDIRECT_TO;
+export function authCallbackUrl(_browserOrigin: string, flow: "signup" | "recovery" = "signup"): string {
   if (flow === "recovery") return PASSWORD_RESET_REDIRECT_TO;
-  const origin = authEmailOrigin(browserOrigin);
-  return `${origin}/auth/callback`;
+  return SIGNUP_EMAIL_REDIRECT_TO;
 }
 
 export function authCallbackDestination(input: {
@@ -155,14 +153,8 @@ export function authErrorMessage(message: string): string {
   if (text.includes("already registered") || text.includes("already been registered")) {
     return "An account with that email already exists. Log in instead.";
   }
-  if (text.includes("provider") && (text.includes("not enabled") || text.includes("disabled") || text.includes("unsupported"))) {
-    return "Google sign-in is turned off in this Supabase project. Enable the Google provider in the Supabase dashboard, then try again.";
-  }
   if (text.includes("password") && (text.includes("at least") || text.includes("weak") || text.includes("should be"))) {
     return message;
-  }
-  if (text.includes("captcha")) {
-    return "The bot-protection check failed or expired. Complete it again, then retry.";
   }
   if (text.includes("rate limit") || text.includes("too many")) {
     return "Too many attempts. Wait a minute, then try again.";
