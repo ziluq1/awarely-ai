@@ -1,3 +1,40 @@
+# Awarely
+
+**Website:** https://awarely-ai.vercel.app
+
+A private journaling app with an AI companion for the moments you need to pause. Snap an optional photo, note your mood, write a short reflection, and talk it through with a chatbot built for grounding and self-reflection. It listens, asks gentle questions, and helps you slow down. It does not diagnose, treat, or replace crisis support.
+
+**Who it's for:** anyone who wants a calm place to check in with themselves. Most journaling apps are a blank page, and most chatbots are built to answer questions, not to help you notice how you feel. Awarely pairs a private timeline with an AI companion that stays in reflection mode: it mirrors back what you wrote, helps you name the feeling, and offers simple grounding prompts. It won't give medical advice, and it points you to real help when a conversation needs more than an app can offer.
+
+## Features
+
+- **AI companion:** a chat built for grounding and reflection, not diagnosis or advice. It can talk through an entry with you or just help you settle.
+- **Check-in entries:** an optional photo, a mood, and a short written reflection.
+- **Personal timeline:** every entry lands in your own timeline, tied to your account.
+- **Private by default:** entries stay with your account and photos are private.
+- **Shared timelines:** choose specific moments to share with friends on separate timelines. Nothing is shared unless you pick it.
+
+## What it is not
+
+Awarely is not medical care, therapy, or crisis support. If you're in crisis, contact local emergency services or a crisis line (in the US, call or text 988).
+
+## Tech
+
+Next.js (App Router) on Vercel, with Supabase for auth and data (email and Google sign-in). Cloudflare Turnstile protects the login, signup, and password reset forms. The AI companion runs on the Gemini API.
+
+## Run locally
+
+```bash
+git clone <your-repo-url>
+cd <your-repo>
+npm install
+cp .env.example .env.local   # add your Supabase and Gemini keys
+npm run dev
+```
+
+Then open http://localhost:3000.
+
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
