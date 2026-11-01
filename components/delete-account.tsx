@@ -91,8 +91,9 @@ export function DeleteAccount() {
               Delete this account?
             </h2>
             <p className="mt-3 leading-relaxed text-muted">
-              This permanently deletes your account, profile, profile photo, and personal records. Shared journals that
-              belong to other people stay theirs. This cannot be undone.
+              This permanently deletes your login, profile, photos, journal entries, friendships, notifications, and
+              shared timelines you own from Awarely&apos;s database. Shared journals that belong to other people stay
+              theirs. This cannot be undone.
             </p>
             <label className="mt-5 block text-sm font-medium text-foreground" htmlFor="delete-confirmation">
               Type DELETE to confirm

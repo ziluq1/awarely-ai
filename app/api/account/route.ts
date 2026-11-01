@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import { NextResponse } from "next/server";
 import { isEmailVerified } from "@/lib/auth";
-import { removeOwnedFiles } from "@/lib/delete-account";
+import { purgeAccountData } from "@/lib/delete-account";
 import { DELETE_CONFIRMATION } from "@/lib/delete-account-rules";
 import { adminSupabase } from "@/lib/supabase/admin";
 import { serverSupabase } from "@/lib/supabase/server";
@@ -42,8 +42,9 @@ export async function POST(request: Request) {
   }
 
   const userId = data.user.id;
-  const files = await removeOwnedFiles(admin, userId);
-  if (files) return json({ ok: false, message: files }, 500);
+  // Wipe storage objects and every owned row before removing the auth user.
+  const purged = await purgeAccountData(admin, userId);
+  if (purged) return json({ ok: false, message: purged }, 500);
 
   const deleted = await admin.auth.admin.deleteUser(userId);
   if (deleted.error && !/user not found/i.test(deleted.error.message)) {
