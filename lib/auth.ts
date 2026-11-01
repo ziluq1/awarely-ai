@@ -147,21 +147,29 @@ export function authErrorMessage(message: string): string {
   if (text.includes("invalid login credentials")) {
     return "That email and password do not match. Try again, or use Forgot password.";
   }
-  if (text.includes("email not confirmed")) {
-    return "Confirm your email before signing in. Use the link in your email, or send another confirmation email below.";
-  }
-  if (text.includes("already registered") || text.includes("already been registered")) {
+  if (text.includes("already registered") || text.includes("already been registered") || text.includes("user already exists")) {
     return "An account with that email already exists. Log in instead.";
+  }
+  if (text.includes("captcha")) {
+    return "Supabase still has CAPTCHA turned on. In the Supabase dashboard go to Authentication → Attack Protection and disable CAPTCHA, then try again.";
+  }
+  if (text.includes("error sending") || text.includes("confirmation email") || text.includes("error sending magic link")) {
+    return "Supabase could not send the email. Turn off Confirm email under Authentication → Providers → Email, or fix SMTP, then try again.";
+  }
+  if (text.includes("signups not allowed") || text.includes("signup is disabled") || text.includes("sign up is disabled")) {
+    return "New signups are turned off in this Supabase project. Enable email signup in the dashboard, then try again.";
   }
   if (text.includes("password") && (text.includes("at least") || text.includes("weak") || text.includes("should be"))) {
     return message;
   }
-  if (text.includes("rate limit") || text.includes("too many")) {
+  if (text.includes("rate limit") || text.includes("too many") || text.includes("email rate limit")) {
     return "Too many attempts. Wait a minute, then try again.";
   }
   if (text.includes("network") || text.includes("fetch") || text.includes("failed to fetch")) {
     return "awarely.ai could not reach Supabase. Check your connection and try again.";
   }
+  const trimmed = message.trim();
+  if (trimmed) return trimmed;
   return "Supabase could not complete that request. Try again.";
 }
 

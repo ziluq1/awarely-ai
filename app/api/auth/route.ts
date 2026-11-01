@@ -1,5 +1,5 @@
 import { connection, NextResponse } from "next/server";
-import { authCallbackUrl, authErrorMessage, isEmail, isEmailVerified } from "@/lib/auth";
+import { authCallbackUrl, authErrorMessage, isEmail } from "@/lib/auth";
 import { serverSupabase } from "@/lib/supabase/server";
 
 const MAX_BODY_BYTES = 16_384;
@@ -9,8 +9,7 @@ const MAX_PASSWORD_LENGTH = 1_024;
 type AuthRequest =
   | { flow: "login"; email: string; password: string }
   | { flow: "signup"; email: string; password: string }
-  | { flow: "forgot"; email: string }
-  | { flow: "resend"; email: string; source: "login" | "signup" };
+  | { flow: "forgot"; email: string };
 
 export async function POST(request: Request) {
   await connection();
@@ -28,14 +27,13 @@ export async function POST(request: Request) {
   if (!supabase) return failure("Account access is not configured. Try again later.", 503);
 
   if (value.flow === "login") {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email: value.email,
       password: value.password,
     });
-    if (error) return failure(authErrorMessage(error.message), 401);
-    if (!isEmailVerified(data.user)) {
-      await supabase.auth.signOut();
-      return failure(authErrorMessage("Email not confirmed"), 403);
+    if (error) {
+      console.error("[auth] signInWithPassword failed:", error.message, error);
+      return failure(authErrorMessage(error.message), 401);
     }
     return NextResponse.json({ ok: true, status: "authenticated" });
   }
@@ -46,29 +44,28 @@ export async function POST(request: Request) {
       password: value.password,
       options: { emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup") },
     });
-    if (error) return failure(authErrorMessage(error.message), 400);
-    if (!data.session || !isEmailVerified(data.user)) {
-      if (data.session) await supabase.auth.signOut();
-      return NextResponse.json({ ok: true, status: "confirmation_sent" });
+    if (error) {
+      console.error("[auth] signUp failed:", error.message, error);
+      return failure(authErrorMessage(error.message), 400);
+    }
+    if (!data.session) {
+      // Confirm-email is still enabled in the Supabase project.
+      return failure(
+        "Supabase is still requiring email confirmation. In Authentication → Providers → Email, turn off Confirm email, then try again.",
+        400,
+      );
     }
     return NextResponse.json({ ok: true, status: "authenticated" });
   }
 
-  if (value.flow === "forgot") {
-    const { error } = await supabase.auth.resetPasswordForEmail(value.email, {
-      redirectTo: authCallbackUrl(new URL(request.url).origin, "recovery"),
-    });
-    if (error) return failure(authErrorMessage(error.message), 400);
-    return NextResponse.json({ ok: true, status: "reset_sent" });
-  }
-
-  const { error } = await supabase.auth.resend({
-    type: "signup",
-    email: value.email,
-    options: { emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup") },
+  const { error } = await supabase.auth.resetPasswordForEmail(value.email, {
+    redirectTo: authCallbackUrl(new URL(request.url).origin, "recovery"),
   });
-  if (error) return failure(authErrorMessage(error.message), 400);
-  return NextResponse.json({ ok: true, status: "confirmation_resent" });
+  if (error) {
+    console.error("[auth] resetPasswordForEmail failed:", error.message, error);
+    return failure(authErrorMessage(error.message), 400);
+  }
+  return NextResponse.json({ ok: true, status: "reset_sent" });
 }
 
 async function readRequest(
@@ -92,13 +89,6 @@ async function readRequest(
 
   if (flow === "forgot") return { ok: true, value: { flow, email } };
 
-  if (flow === "resend") {
-    const source = authSource(input.source);
-    return source
-      ? { ok: true, value: { flow, email, source } }
-      : { ok: false, message: "Refresh the page and try again." };
-  }
-
   const password = typeof input.password === "string" ? input.password : "";
   if (flow === "login") {
     if (!password || password.length > MAX_PASSWORD_LENGTH) {
@@ -117,10 +107,6 @@ async function readRequest(
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function authSource(value: unknown): "login" | "signup" | null {
-  return value === "login" || value === "signup" ? value : null;
 }
 
 function failure(message: string, status: number, kind = "auth") {

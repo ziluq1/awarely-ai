@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { applySavedIdentity, isEmailVerified, profileFromUser } from "@/lib/auth";
+import { applySavedIdentity, profileFromUser } from "@/lib/auth";
 import type { AuthProfile, SavedIdentity } from "@/lib/auth";
 import { ensureProfile } from "@/lib/social";
 import { browserSupabase } from "@/lib/supabase/browser";
@@ -73,19 +73,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     function showAccount(nextUser: NonNullable<Parameters<typeof profileFromUser>[0]>) {
       const account = profileFromUser(nextUser);
-      const emailVerified = isEmailVerified(nextUser);
       if (saved.current && saved.current.id !== account.id) {
         saved.current = null;
         revision.current = 0;
       }
       publish(account);
-      setVerified(emailVerified);
+      setVerified(true);
       setStatus("signed-in");
-      if (!emailVerified) {
-        loadToken.current += 1;
-        setIdentityReady(true);
-        return;
-      }
       void loadSaved(account);
     }
 

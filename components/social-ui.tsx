@@ -10,7 +10,7 @@ import { EmptyBlock, ErrorBlock, LoadingBlock, buttonClass, cardClass } from "@/
 import { coverPhotoSrc, profilePhotoSrc, sharedPhotoSrc } from "@/lib/social-rules";
 
 export function AccountGate({ children }: { children: ReactNode }) {
-  const { status, configured, user, verified } = useAuth();
+  const { status, configured, user } = useAuth();
   if (status === "loading") return <LoadingBlock label="Checking your account." />;
   if (!configured) {
     return (
@@ -25,15 +25,6 @@ export function AccountGate({ children }: { children: ReactNode }) {
       <EmptyBlock title="Log in to continue" message="Friends and shared timelines stay with your account.">
         <Link className={buttonClass("primary")} href="/login">
           Log in
-        </Link>
-      </EmptyBlock>
-    );
-  }
-  if (!verified) {
-    return (
-      <EmptyBlock title="Confirm your email" message="This part of your account stays closed until the confirmation link succeeds.">
-        <Link className={buttonClass("primary")} href="/login?error=unverified">
-          Resend the confirmation email
         </Link>
       </EmptyBlock>
     );

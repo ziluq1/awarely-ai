@@ -4,7 +4,6 @@ import {
   authLinkErrorFromProvider,
   authLinkMessage,
   isEmailOtpType,
-  isEmailVerified,
 } from "@/lib/auth";
 import { browserSupabase } from "@/lib/supabase/browser";
 
@@ -50,12 +49,11 @@ export async function finishAuthFromLocation(forcedNext?: string): Promise<Finis
       console.error("[auth] verifyOtp failed:", error.message, error);
       return { ok: false, message: authLinkMessage(authExchangeError(error.message)) };
     }
-    const done = await finishSession(data.user, {
+    const done = finishSession({
       pathname,
       type: otpType,
       next: search.get("next"),
       forcedNext,
-      supabase,
     });
     if (done.ok) clearAuthParamsFromUrl();
     return done;
@@ -63,17 +61,16 @@ export async function finishAuthFromLocation(forcedNext?: string): Promise<Finis
 
   const code = search.get("code");
   if (code) {
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
       console.error("[auth] exchangeCodeForSession failed:", error.message, error);
       return { ok: false, message: authLinkMessage(authExchangeError(error.message)) };
     }
-    const done = await finishSession(data.user, {
+    const done = finishSession({
       pathname,
       type: search.get("type") || hash.get("type"),
       next: search.get("next"),
       forcedNext,
-      supabase,
     });
     if (done.ok) clearAuthParamsFromUrl();
     return done;
@@ -82,7 +79,7 @@ export async function finishAuthFromLocation(forcedNext?: string): Promise<Finis
   const accessToken = hash.get("access_token");
   const refreshToken = hash.get("refresh_token");
   if (accessToken && refreshToken) {
-    const { data, error } = await supabase.auth.setSession({
+    const { error } = await supabase.auth.setSession({
       access_token: accessToken,
       refresh_token: refreshToken,
     });
@@ -90,12 +87,11 @@ export async function finishAuthFromLocation(forcedNext?: string): Promise<Finis
       console.error("[auth] setSession failed:", error.message, error);
       return { ok: false, message: authLinkMessage(authExchangeError(error.message)) };
     }
-    const done = await finishSession(data.user, {
+    const done = finishSession({
       pathname,
       type: hash.get("type") || search.get("type"),
       next: search.get("next"),
       forcedNext,
-      supabase,
     });
     if (done.ok) clearAuthParamsFromUrl();
     return done;
@@ -113,31 +109,21 @@ export async function finishAuthFromLocation(forcedNext?: string): Promise<Finis
   };
 }
 
-async function finishSession(
-  user: { email_confirmed_at?: string | null; confirmed_at?: string | null } | null,
-  input: {
-    pathname: string;
-    type: string | null;
-    next: string | null;
-    forcedNext?: string;
-    supabase: NonNullable<ReturnType<typeof browserSupabase>>;
-  },
-): Promise<FinishAuthResult> {
-  const next = authCallbackDestination({
-    pathname: input.pathname,
-    type: input.type,
-    next: input.next,
-    forcedNext: input.forcedNext,
-  });
-  // Email OTP verify is the confirmation step — do not sign the user out if the
-  // returned user object is briefly missing confirmed timestamps.
-  const confirmedByOtp = input.type === "email" || input.type === "signup" || input.type === "invite";
-  if (next !== "/reset-password" && !isEmailVerified(user) && !confirmedByOtp) {
-    console.error("[auth] session established but email is still unverified", { type: input.type, user });
-    await input.supabase.auth.signOut();
-    return { ok: false, message: authLinkMessage("unverified") };
-  }
-  return { ok: true, next };
+function finishSession(input: {
+  pathname: string;
+  type: string | null;
+  next: string | null;
+  forcedNext?: string;
+}): FinishAuthResult {
+  return {
+    ok: true,
+    next: authCallbackDestination({
+      pathname: input.pathname,
+      type: input.type,
+      next: input.next,
+      forcedNext: input.forcedNext,
+    }),
+  };
 }
 
 function clearAuthParamsFromUrl() {

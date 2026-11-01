@@ -157,14 +157,6 @@ export function AccountTimeline() {
         </ErrorBlock>
       ) : null}
 
-      {auth.status === "signed-in" && !auth.verified ? (
-        <EmptyBlock title="Confirm your email" message="Your timeline stays closed until the confirmation link succeeds.">
-          <Link href="/login?error=unverified" className={buttonClass("primary")}>
-            Resend the confirmation email
-          </Link>
-        </EmptyBlock>
-      ) : null}
-
       {auth.status === "anonymous" ? (
         <EmptyBlock
           title="Sign in to keep a timeline"
@@ -509,7 +501,7 @@ function CaptureForm({ signedIn, onSaved }: { signedIn: boolean; onSaved: (entry
         existing={null}
         submitLabel="Save Entry"
         onSubmit={async (draft, onProgress) => {
-          if (!signedIn) return { ok: false, message: "Log in with a confirmed email before saving to your account." };
+          if (!signedIn) return { ok: false, message: "Log in before saving to your account." };
           if (!draft.photo && !draft.skipPhoto) {
             return { ok: false, message: "Add a photo, or choose Skip photo." };
           }

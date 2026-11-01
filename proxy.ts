@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { isEmailVerified, safeNextPath } from "@/lib/auth";
+import { safeNextPath } from "@/lib/auth";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 
 const PROTECTED_PAGES = [/^\/timeline(?:\/|$)/, /^\/friends(?:\/|$)/, /^\/shared(?:\/|$)/, /^\/profile(?:\/|$)/, /^\/notifications(?:\/|$)/];
@@ -43,18 +43,16 @@ export async function proxy(request: NextRequest) {
   });
 
   const { data } = await supabase.auth.getUser();
-  const user = data.user;
-  if (user && isEmailVerified(user)) return response;
+  if (data.user) return response;
 
   if (protectedApi) {
-    const message = user ? "Confirm your email before using your account." : "Log in to continue.";
-    const denied = NextResponse.json({ ok: false, message }, { status: user ? 403 : 401 });
+    const denied = NextResponse.json({ ok: false, message: "Log in to continue." }, { status: 401 });
     pending.forEach((cookie) => denied.cookies.set(cookie.name, cookie.value, cookie.options));
     return denied;
   }
 
-  const dest = new URL(user ? "/login?error=unverified" : "/login", url.origin);
-  if (!user) dest.searchParams.set("next", safeNextPath(`${url.pathname}${url.search}`));
+  const dest = new URL("/login", url.origin);
+  dest.searchParams.set("next", safeNextPath(`${url.pathname}${url.search}`));
   const redirect = NextResponse.redirect(dest);
   pending.forEach((cookie) => redirect.cookies.set(cookie.name, cookie.value, cookie.options));
   return redirect;

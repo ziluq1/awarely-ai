@@ -1,6 +1,5 @@
 import { connection } from "next/server";
 import { NextResponse } from "next/server";
-import { isEmailVerified } from "@/lib/auth";
 import { purgeAccountData } from "@/lib/delete-account";
 import { DELETE_CONFIRMATION } from "@/lib/delete-account-rules";
 import { adminSupabase } from "@/lib/supabase/admin";
@@ -13,9 +12,6 @@ export async function POST(request: Request) {
 
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) return json({ ok: false, message: "Log in to delete your account." }, 401);
-  if (!isEmailVerified(data.user)) {
-    return json({ ok: false, message: "Confirm your email before deleting your account." }, 403);
-  }
 
   let confirmation: unknown = null;
   try {

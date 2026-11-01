@@ -52,25 +52,22 @@ export function AuthScreen({ mode }: { mode: Mode }) {
   const [fieldError, setFieldError] = useState("");
   const [formError, setFormError] = useState("");
   const [notice, setNotice] = useState("");
-  const [pending, setPending] = useState<"form" | "resend" | null>(null);
+  const [pending, setPending] = useState<"form" | null>(null);
 
   const nextPath = params.get("next");
 
   useEffect(() => {
-    if (mode === "reset" || auth.status !== "signed-in" || !auth.verified) return;
+    if (mode === "reset" || auth.status !== "signed-in") return;
     if (mode === "login" || mode === "signup") {
       reloadPage(mode === "login" ? "/" : safeNextPath(nextPath));
       return;
     }
     router.replace(safeNextPath(nextPath));
-  }, [auth.status, auth.verified, mode, nextPath, router]);
+  }, [auth.status, mode, nextPath, router]);
 
   const callbackError = params.get("error");
   const banner = authLinkMessage(callbackError);
   const accountDeleted = params.get("deleted") === "1";
-  const canResend =
-    (mode === "login" || mode === "signup") &&
-    (Boolean(banner) || notice.startsWith("Check your email") || formError.includes("Confirm your email"));
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -129,10 +126,6 @@ export function AuthScreen({ mode }: { mode: Mode }) {
         setFormError(result.message);
         return;
       }
-      if (result.status === "confirmation_sent") {
-        setNotice("Check your email for a confirmation link. After you confirm, you can log in.");
-        return;
-      }
       reloadPage("/");
       return;
     }
@@ -166,29 +159,6 @@ export function AuthScreen({ mode }: { mode: Mode }) {
     router.replace("/");
   }
 
-  async function resendConfirmation() {
-    if (pending) return;
-    const address = email.trim() || auth.user?.email || "";
-    if (!isEmail(address)) {
-      setFieldError("Enter the email on the account, then send the confirmation email again.");
-      return;
-    }
-    if (mode !== "login" && mode !== "signup") return;
-    setPending("resend");
-    setFormError("");
-    const result = await sendAuthRequest({
-      flow: "resend",
-      email: address,
-      source: mode,
-    });
-    setPending(null);
-    if (!result.ok) {
-      setFormError(result.message);
-      return;
-    }
-    setNotice("Check your email for a new confirmation link. Use the newest one.");
-  }
-
   const copy = COPY[mode];
   const emailId = `${formId}-email`;
   const passwordId = `${formId}-password`;
@@ -214,17 +184,6 @@ export function AuthScreen({ mode }: { mode: Mode }) {
             {notice}
           </p>
         ) : null}
-        {canResend ? (
-          <Button
-            variant="secondary"
-            className="w-full"
-            disabled={pending !== null}
-            onClick={() => void resendConfirmation()}
-          >
-            {pending === "resend" ? "Sending confirmation email…" : "Resend confirmation email"}
-          </Button>
-        ) : null}
-
         <form className="space-y-4" onSubmit={(event) => void onSubmit(event)} aria-busy={pending === "form"} noValidate>
           {mode === "reset" ? null : (
             <div>
@@ -326,8 +285,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
 
 type AuthRequestBody =
   | { flow: "login" | "signup"; email: string; password: string }
-  | { flow: "forgot"; email: string }
-  | { flow: "resend"; email: string; source: "login" | "signup" };
+  | { flow: "forgot"; email: string };
 
 type AuthRequestResult =
   | { ok: true; status: string }
