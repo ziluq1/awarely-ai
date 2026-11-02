@@ -49,10 +49,12 @@ export function AuthScreen({ mode }: { mode: Mode }) {
   const [fieldError, setFieldError] = useState("");
   const [formError, setFormError] = useState("");
   const [notice, setNotice] = useState("");
-  const [pending, setPending] = useState<"form" | null>(null);
+  const [pending, setPending] = useState<"form" | "resend" | null>(null);
   const [captchaToken, setCaptchaToken] = useState("");
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
   const turnstileRef = useRef<TurnstileInstance | null>(null);
   const needsCaptcha = mode === "login" || mode === "signup" || mode === "forgot";
+  const canResendConfirm = mode === "login" || mode === "signup";
 
   const nextPath = params.get("next");
 
@@ -82,6 +84,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
     setFieldError("");
     setFormError("");
     setNotice("");
+    setAwaitingConfirm(false);
 
     if (mode !== "reset") {
       if (!isEmail(email)) {
@@ -158,6 +161,7 @@ export function AuthScreen({ mode }: { mode: Mode }) {
         return;
       }
       resetCaptcha();
+      setAwaitingConfirm(true);
       setNotice("Check your email to confirm your account.");
       return;
     }
@@ -186,6 +190,48 @@ export function AuthScreen({ mode }: { mode: Mode }) {
     }
     router.replace("/");
     router.refresh();
+  }
+
+  async function onResendConfirmation() {
+    if (pending) return;
+    setFieldError("");
+    setFormError("");
+    setNotice("");
+
+    if (!isEmail(email)) {
+      setFieldError("Enter a valid email address.");
+      return;
+    }
+    if (!captchaToken) {
+      setFieldError("Complete the bot check before continuing.");
+      return;
+    }
+
+    setPending("resend");
+    const supabase = browserSupabase();
+    if (!supabase) {
+      setPending(null);
+      setFormError("Supabase is not configured. Add the project URL and publishable key, then restart the dev server.");
+      resetCaptcha();
+      return;
+    }
+
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim(),
+      options: {
+        emailRedirectTo: authCallbackUrl(window.location.origin, "signup"),
+        captchaToken,
+      },
+    });
+    setPending(null);
+    resetCaptcha();
+    if (error) {
+      setFormError(error.message);
+      return;
+    }
+    setAwaitingConfirm(true);
+    setNotice("Confirmation email sent. Check your inbox (and spam).");
   }
 
   const copy = COPY[mode];
@@ -284,6 +330,24 @@ export function AuthScreen({ mode }: { mode: Mode }) {
         </form>
 
         <div className="flex flex-col gap-2 text-sm">
+          {canResendConfirm ? (
+            <div className="space-y-2">
+              {awaitingConfirm ? (
+                <p className="text-sm text-muted">
+                  Didn&apos;t get the email? Complete the bot check again, then resend.
+                </p>
+              ) : null}
+              <Button
+                type="button"
+                variant={awaitingConfirm ? "primary" : "secondary"}
+                className="w-full"
+                disabled={pending !== null || !captchaToken}
+                onClick={() => void onResendConfirmation()}
+              >
+                {pending === "resend" ? "Sending…" : "Resend confirmation email"}
+              </Button>
+            </div>
+          ) : null}
           {mode === "login" ? (
             <Link className="font-medium text-accent-text underline decoration-line underline-offset-4" href="/forgot-password">
               Forgot password?

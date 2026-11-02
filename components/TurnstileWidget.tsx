@@ -24,15 +24,13 @@ export const TurnstileWidget = forwardRef<TurnstileInstance, TurnstileWidgetProp
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-line bg-card/60 p-2">
-      <Turnstile
-        ref={ref}
-        siteKey={siteKey}
-        options={{ theme: "light", size: "flexible" }}
-        onSuccess={onSuccess}
-        onExpire={onClear}
-        onError={onClear}
-      />
-    </div>
+    <Turnstile
+      ref={ref}
+      siteKey={siteKey}
+      options={{ theme: "light", size: "flexible" }}
+      onSuccess={onSuccess}
+      onExpire={onClear}
+      onError={onClear}
+    />
   );
 });
