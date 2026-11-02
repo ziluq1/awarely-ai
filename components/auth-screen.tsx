@@ -6,12 +6,7 @@ import { useEffect, useId, useState } from "react";
 import type { FormEvent } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { Button, ErrorBlock, PageHeader, cardClass, fieldClass } from "@/components/ui";
-import {
-  authErrorMessage,
-  authLinkMessage,
-  isEmail,
-  safeNextPath,
-} from "@/lib/auth";
+import { authCallbackUrl, authLinkMessage, isEmail, safeNextPath } from "@/lib/auth";
 import { browserSupabase } from "@/lib/supabase/browser";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
@@ -58,11 +53,9 @@ export function AuthScreen({ mode }: { mode: Mode }) {
 
   useEffect(() => {
     if (mode === "reset" || auth.status !== "signed-in") return;
-    if (mode === "login" || mode === "signup") {
-      reloadPage(mode === "login" ? "/" : safeNextPath(nextPath));
-      return;
-    }
-    router.replace(safeNextPath(nextPath));
+    const dest = mode === "login" ? "/" : safeNextPath(nextPath);
+    router.replace(dest === "/login" || dest === "/signup" ? "/" : dest);
+    router.refresh();
   }, [auth.status, mode, nextPath, router]);
 
   const callbackError = params.get("error");
@@ -100,33 +93,47 @@ export function AuthScreen({ mode }: { mode: Mode }) {
 
     setPending("form");
 
+    const supabase = browserSupabase();
+    if (!supabase) {
+      setPending(null);
+      setFormError("Supabase is not configured. Add the project URL and publishable key, then restart the dev server.");
+      return;
+    }
+
     if (mode === "login") {
-      const result = await sendAuthRequest({
-        flow: "login",
+      const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
       setPending(null);
-      if (!result.ok) {
-        setFormError(result.message);
+      if (error) {
+        setFormError(error.message);
         return;
       }
-      reloadPage("/");
+      router.replace("/");
+      router.refresh();
       return;
     }
 
     if (mode === "signup") {
-      const result = await sendAuthRequest({
-        flow: "signup",
+      const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
+        options: {
+          emailRedirectTo: authCallbackUrl(window.location.origin, "signup"),
+        },
       });
       setPending(null);
-      if (!result.ok) {
-        setFormError(result.message);
+      if (error) {
+        setFormError(error.message);
         return;
       }
-      reloadPage("/");
+      if (data.session) {
+        router.replace(safeNextPath(nextPath));
+        router.refresh();
+        return;
+      }
+      setNotice("Check your email to confirm your account.");
       return;
     }
 
@@ -144,19 +151,14 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       return;
     }
 
-    const supabase = browserSupabase();
-    if (!supabase) {
-      setPending(null);
-      setFormError("Supabase is not configured. Add the project URL and publishable key, then restart the dev server.");
-      return;
-    }
     const { error } = await supabase.auth.updateUser({ password });
     setPending(null);
     if (error) {
-      setFormError(authErrorMessage(error.message));
+      setFormError(error.message);
       return;
     }
     router.replace("/");
+    router.refresh();
   }
 
   const copy = COPY[mode];
@@ -312,10 +314,6 @@ async function sendAuthRequest(body: AuthRequestBody): Promise<AuthRequestResult
   } catch {
     return { ok: false, message: "awarely.ai could not complete that request. Check your connection and try again." };
   }
-}
-
-function reloadPage(path: string) {
-  window.location.replace(path);
 }
 
 function errorTitle(mode: Mode): string {

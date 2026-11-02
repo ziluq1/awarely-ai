@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { Avatar } from "@/components/social-ui";
@@ -10,6 +10,7 @@ import { Button, buttonClass } from "@/components/ui";
 
 export function AuthControls({ compact = false, part = "full" }: { compact?: boolean; part?: "full" | "identity" | "logout" }) {
   const auth = useAuth();
+  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
@@ -47,7 +48,8 @@ export function AuthControls({ compact = false, part = "full" }: { compact?: boo
               setError(message);
               return;
             }
-            window.location.reload();
+            router.replace("/login");
+            router.refresh();
           });
         }}
       />
@@ -89,17 +91,19 @@ function SignedIn({
   const identity = (
     <Link
       href="/profile"
-      aria-label={`Your profile, ${name}`}
+      aria-label={`Signed in as ${user.email || name}`}
       aria-current={onProfile ? "page" : undefined}
       className={
         compact
-          ? "flex min-w-0 items-center gap-2 rounded-full"
+          ? "flex min-w-0 max-w-[11rem] items-center gap-2 rounded-full"
           : `flex min-w-0 items-center gap-3 rounded-2xl border border-line p-3 ${onProfile ? "bg-accent" : "bg-background hover:bg-accent"}`
       }
     >
       <Avatar userId={user.id} name={name} hasPhoto={user.hasAvatar} revision={user.avatarRevision} size={compact ? "sm" : "md"} />
       <div className="min-w-0">
-        <p className={compact ? "sr-only" : "truncate text-sm font-medium text-foreground"}>{name}</p>
+        <p className={compact ? "truncate text-xs font-medium text-foreground" : "truncate text-sm font-medium text-foreground"}>
+          {compact ? user.email || name : name}
+        </p>
         {compact ? null : <p className="truncate text-xs text-muted">{user.email}</p>}
       </div>
     </Link>

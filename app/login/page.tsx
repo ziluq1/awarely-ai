@@ -5,7 +5,7 @@ import { LoadingBlock } from "@/components/ui";
 
 export const metadata: Metadata = {
   title: "Log in",
-  description: "Log in to awarely.ai with email and password, or continue with Google.",
+  description: "Log in to awarely.ai with email and password.",
 };
 
 export default function LoginPage() {

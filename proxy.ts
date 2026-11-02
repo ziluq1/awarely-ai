@@ -5,6 +5,7 @@ import { publicSupabaseEnv } from "@/lib/supabase/env";
 
 const PROTECTED_PAGES = [/^\/friends(?:\/|$)/, /^\/shared(?:\/|$)/, /^\/profile(?:\/|$)/, /^\/notifications(?:\/|$)/];
 const PROTECTED_APIS = [/^\/api\/(?:journal-photo|journal|profile-photo|shared-photo|timeline-cover|account)(?:\/|$)/];
+const AUTH_PAGES = new Set(["/login", "/signup"]);
 
 export async function proxy(request: NextRequest) {
   const url = request.nextUrl;
@@ -14,18 +15,19 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(dest);
   }
 
+  const env = publicSupabaseEnv();
   const protectedPage = PROTECTED_PAGES.some((pattern) => pattern.test(url.pathname));
   const protectedApi = PROTECTED_APIS.some((pattern) => pattern.test(url.pathname));
-  if (!protectedPage && !protectedApi) return NextResponse.next();
+  const authPage = AUTH_PAGES.has(url.pathname);
 
-  const env = publicSupabaseEnv();
   if (!env) {
     if (protectedApi) return NextResponse.json({ ok: false, message: "Supabase is not configured." }, { status: 503 });
-    return NextResponse.redirect(new URL("/login?error=config", url.origin));
+    if (protectedPage) return NextResponse.redirect(new URL("/login?error=config", url.origin));
+    return NextResponse.next({ request });
   }
 
-  const pending: { name: string; value: string; options?: Parameters<NextResponse["cookies"]["set"]>[2] }[] = [];
   let response = NextResponse.next({ request });
+  const pending: { name: string; value: string; options?: Parameters<NextResponse["cookies"]["set"]>[2] }[] = [];
   const supabase = createServerClient(env.url, env.key, {
     cookies: {
       getAll() {
@@ -42,8 +44,20 @@ export async function proxy(request: NextRequest) {
     },
   });
 
+  // Refresh the session on every matched request. Prefer getUser over getSession.
   const { data } = await supabase.auth.getUser();
-  if (data.user) return response;
+  const user = data.user;
+
+  if (user && authPage) {
+    const next = safeNextPath(url.searchParams.get("next"));
+    const dest = NextResponse.redirect(new URL(next === "/login" || next === "/signup" ? "/" : next, url.origin));
+    pending.forEach((cookie) => dest.cookies.set(cookie.name, cookie.value, cookie.options));
+    return dest;
+  }
+
+  if (user || (!protectedPage && !protectedApi)) {
+    return response;
+  }
 
   if (protectedApi) {
     const denied = NextResponse.json({ ok: false, message: "Log in to continue." }, { status: 401 });

@@ -5,7 +5,7 @@ import { LoadingBlock } from "@/components/ui";
 
 export const metadata: Metadata = {
   title: "Sign up",
-  description: "Create a awarely.ai account with email and password, or continue with Google.",
+  description: "Create a awarely.ai account with email and password.",
 };
 
 export default function SignupPage() {

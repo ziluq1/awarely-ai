@@ -1,5 +1,5 @@
 import { connection, NextResponse } from "next/server";
-import { authCallbackUrl, authErrorMessage, isEmail } from "@/lib/auth";
+import { authCallbackUrl, isEmail } from "@/lib/auth";
 import { serverSupabase } from "@/lib/supabase/server";
 
 const MAX_BODY_BYTES = 16_384;
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     });
     if (error) {
       console.error("[auth] signInWithPassword failed:", error.message, error);
-      return failure(authErrorMessage(error.message), 401);
+      return failure(error.message, 401);
     }
     return NextResponse.json({ ok: true, status: "authenticated" });
   }
@@ -46,14 +46,10 @@ export async function POST(request: Request) {
     });
     if (error) {
       console.error("[auth] signUp failed:", error.message, error);
-      return failure(authErrorMessage(error.message), 400);
+      return failure(error.message, 400);
     }
     if (!data.session) {
-      // Confirm-email is still enabled in the Supabase project.
-      return failure(
-        "Supabase is still requiring email confirmation. In Authentication → Providers → Email, turn off Confirm email, then try again.",
-        400,
-      );
+      return NextResponse.json({ ok: true, status: "confirm_email" });
     }
     return NextResponse.json({ ok: true, status: "authenticated" });
   }
@@ -63,7 +59,7 @@ export async function POST(request: Request) {
   });
   if (error) {
     console.error("[auth] resetPasswordForEmail failed:", error.message, error);
-    return failure(authErrorMessage(error.message), 400);
+    return failure(error.message, 400);
   }
   return NextResponse.json({ ok: true, status: "reset_sent" });
 }
