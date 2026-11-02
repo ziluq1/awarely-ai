@@ -4,7 +4,6 @@ import { AuthScreen } from "@/components/auth-screen";
 import { LoadingBlock } from "@/components/ui";
 
 export const metadata: Metadata = {
-  title: "New password",
   description: "Choose a new awarely.ai password after opening the reset link.",
 };
 

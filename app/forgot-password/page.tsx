@@ -4,7 +4,6 @@ import { AuthScreen } from "@/components/auth-screen";
 import { LoadingBlock } from "@/components/ui";
 
 export const metadata: Metadata = {
-  title: "Forgot password",
   description: "Send a awarely.ai password reset link through Supabase.",
 };
 

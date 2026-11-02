@@ -29,10 +29,7 @@ const newsreader = Newsreader({
 });
 
 export const metadata: Metadata = {
-  title: {
-    default: "Awarely AI",
-    template: "Awarely AI",
-  },
+  title: "Awarely AI",
   description:
     "A calm space to capture a moment, write what stands out, and keep a private visual journal in your browser.",
   applicationName: "awarely.ai",

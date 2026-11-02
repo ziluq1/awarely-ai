@@ -4,7 +4,6 @@ import { FriendProfile } from "@/components/friend-profile";
 import { LoadingBlock } from "@/components/ui";
 
 export const metadata: Metadata = {
-  title: "Profile",
   description: "A public profile with the name, username, bio, and photo someone chose to share.",
 };
 

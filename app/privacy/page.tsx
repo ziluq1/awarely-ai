@@ -4,7 +4,6 @@ import { PrivacyActions } from "@/components/privacy-actions";
 import { PageHeader, cardClass } from "@/components/ui";
 
 export const metadata: Metadata = {
-  title: "Privacy and storage",
   description: "How awarely.ai keeps photos and journal entries in your browser, and how to delete them.",
 };
 

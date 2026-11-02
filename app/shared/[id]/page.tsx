@@ -4,7 +4,6 @@ import { SharedDetail } from "@/components/shared-detail";
 import { LoadingBlock } from "@/components/ui";
 
 export const metadata: Metadata = {
-  title: "Shared timeline",
   description: "Entries people chose to share with the members of this timeline.",
 };
 

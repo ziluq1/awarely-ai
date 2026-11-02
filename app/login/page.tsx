@@ -4,7 +4,6 @@ import { AuthScreen } from "@/components/auth-screen";
 import { LoadingBlock } from "@/components/ui";
 
 export const metadata: Metadata = {
-  title: "Log in",
   description: "Log in to awarely.ai with email and password.",
 };
 

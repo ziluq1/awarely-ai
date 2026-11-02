@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { ReflectionForm } from "@/components/reflection-form";
 
 export const metadata: Metadata = {
-  title: "Reflection",
   description: "Write what stands out about this moment and optionally choose a mood label.",
 };
 

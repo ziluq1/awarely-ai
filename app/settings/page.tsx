@@ -3,7 +3,6 @@ import { DeleteAccount } from "@/components/delete-account";
 import { ThemeSettings } from "@/components/theme-settings";
 
 export const metadata: Metadata = {
-  title: "Appearance",
   description: "Choose light or dark mode and a color theme. Preferences stay in this browser.",
 };
 
