@@ -29,6 +29,7 @@ function AppNav({ pathname, next = null }: { pathname: string | null; next?: str
           ))}
           <NavLink href="/shared" label="Shared timeline" current={isCurrent(pathname, "/shared", next)} />
           <AlertsLink pathname={pathname} current={isCurrent(pathname, "/notifications", next)} />
+          <NavLink href="/profile" label="Profile" current={isCurrent(pathname, "/profile", next)} />
           <NavLink href="/settings" label="Settings" current={pathname === "/settings"} />
         </nav>
         <div className="mt-auto space-y-2 pt-2">
@@ -41,6 +42,7 @@ function AppNav({ pathname, next = null }: { pathname: string | null; next?: str
         <div className="ml-auto flex w-full min-w-0 flex-wrap items-center justify-end gap-2 min-[430px]:w-auto min-[430px]:max-w-[calc(100%-8.5rem)]">
           <AuthControls compact />
           <AlertsLink pathname={pathname} current={isCurrent(pathname, "/notifications", next)} toolbar />
+          <NavLink href="/profile" label="Profile" current={isCurrent(pathname, "/profile", next)} toolbar />
           <NavLink href="/settings" label="Settings" current={pathname === "/settings"} toolbar />
         </div>
       </div>
