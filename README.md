@@ -20,7 +20,7 @@ Awarely is not medical care, therapy, or crisis support. If you're in crisis, co
 
 ## Tech
 
-Next.js (App Router) on Vercel, with Supabase for auth and data (email and Google sign-in). Cloudflare Turnstile protects the login, signup, and password reset forms. The AI companion runs on the Gemini API.
+Next.js (App Router) on Vercel, with Supabase for auth and data (email sign-in). 
 
 ## Run locally
 
