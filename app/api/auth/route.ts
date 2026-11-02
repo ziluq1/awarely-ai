@@ -7,9 +7,9 @@ const MAX_EMAIL_LENGTH = 320;
 const MAX_PASSWORD_LENGTH = 1_024;
 
 type AuthRequest =
-  | { flow: "login"; email: string; password: string }
-  | { flow: "signup"; email: string; password: string }
-  | { flow: "forgot"; email: string };
+  | { flow: "login"; email: string; password: string; captchaToken?: string }
+  | { flow: "signup"; email: string; password: string; captchaToken?: string }
+  | { flow: "forgot"; email: string; captchaToken?: string };
 
 export async function POST(request: Request) {
   await connection();
@@ -30,6 +30,7 @@ export async function POST(request: Request) {
     const { error } = await supabase.auth.signInWithPassword({
       email: value.email,
       password: value.password,
+      options: value.captchaToken ? { captchaToken: value.captchaToken } : undefined,
     });
     if (error) {
       console.error("[auth] signInWithPassword failed:", error.message, error);
@@ -42,7 +43,10 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.signUp({
       email: value.email,
       password: value.password,
-      options: { emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup") },
+      options: {
+        emailRedirectTo: authCallbackUrl(new URL(request.url).origin, "signup"),
+        ...(value.captchaToken ? { captchaToken: value.captchaToken } : {}),
+      },
     });
     if (error) {
       console.error("[auth] signUp failed:", error.message, error);
@@ -56,6 +60,7 @@ export async function POST(request: Request) {
 
   const { error } = await supabase.auth.resetPasswordForEmail(value.email, {
     redirectTo: authCallbackUrl(new URL(request.url).origin, "recovery"),
+    ...(value.captchaToken ? { captchaToken: value.captchaToken } : {}),
   });
   if (error) {
     console.error("[auth] resetPasswordForEmail failed:", error.message, error);
@@ -83,20 +88,22 @@ async function readRequest(
     return { ok: false, message: "Enter a valid email address." };
   }
 
-  if (flow === "forgot") return { ok: true, value: { flow, email } };
+  const captchaToken = typeof input.captchaToken === "string" ? input.captchaToken.trim() : "";
+
+  if (flow === "forgot") return { ok: true, value: { flow, email, captchaToken: captchaToken || undefined } };
 
   const password = typeof input.password === "string" ? input.password : "";
   if (flow === "login") {
     if (!password || password.length > MAX_PASSWORD_LENGTH) {
       return { ok: false, message: "Enter your password." };
     }
-    return { ok: true, value: { flow, email, password } };
+    return { ok: true, value: { flow, email, password, captchaToken: captchaToken || undefined } };
   }
   if (flow === "signup") {
     if (password.length < 8 || password.length > MAX_PASSWORD_LENGTH) {
       return { ok: false, message: "Use between 8 and 1,024 characters for your password." };
     }
-    return { ok: true, value: { flow, email, password } };
+    return { ok: true, value: { flow, email, password, captchaToken: captchaToken || undefined } };
   }
   return { ok: false, message: "Refresh the page and try again." };
 }

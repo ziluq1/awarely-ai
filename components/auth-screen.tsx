@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import type { TurnstileInstance } from "@marsidev/react-turnstile";
 import { useAuth } from "@/components/auth-provider";
+import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { Button, ErrorBlock, PageHeader, cardClass, fieldClass } from "@/components/ui";
 import { authCallbackUrl, authLinkMessage, isEmail, safeNextPath } from "@/lib/auth";
 import { browserSupabase } from "@/lib/supabase/browser";
@@ -48,8 +50,20 @@ export function AuthScreen({ mode }: { mode: Mode }) {
   const [formError, setFormError] = useState("");
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState<"form" | null>(null);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const turnstileRef = useRef<TurnstileInstance | null>(null);
+  const needsCaptcha = mode === "login" || mode === "signup" || mode === "forgot";
 
   const nextPath = params.get("next");
+
+  function clearCaptcha() {
+    setCaptchaToken("");
+  }
+
+  function resetCaptcha() {
+    setCaptchaToken("");
+    turnstileRef.current?.reset();
+  }
 
   useEffect(() => {
     if (mode === "reset" || auth.status !== "signed-in") return;
@@ -91,12 +105,18 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       return;
     }
 
+    if (needsCaptcha && !captchaToken) {
+      setFieldError("Complete the bot check before continuing.");
+      return;
+    }
+
     setPending("form");
 
     const supabase = browserSupabase();
     if (!supabase) {
       setPending(null);
       setFormError("Supabase is not configured. Add the project URL and publishable key, then restart the dev server.");
+      resetCaptcha();
       return;
     }
 
@@ -104,10 +124,12 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
+        options: { captchaToken },
       });
       setPending(null);
       if (error) {
         setFormError(error.message);
+        resetCaptcha();
         return;
       }
       router.replace("/");
@@ -121,11 +143,13 @@ export function AuthScreen({ mode }: { mode: Mode }) {
         password,
         options: {
           emailRedirectTo: authCallbackUrl(window.location.origin, "signup"),
+          captchaToken,
         },
       });
       setPending(null);
       if (error) {
         setFormError(error.message);
+        resetCaptcha();
         return;
       }
       if (data.session) {
@@ -133,20 +157,23 @@ export function AuthScreen({ mode }: { mode: Mode }) {
         router.refresh();
         return;
       }
+      resetCaptcha();
       setNotice("Check your email to confirm your account.");
       return;
     }
 
     if (mode === "forgot") {
-      const result = await sendAuthRequest({
-        flow: "forgot",
-        email: email.trim(),
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: authCallbackUrl(window.location.origin, "recovery"),
+        captchaToken,
       });
       setPending(null);
-      if (!result.ok) {
-        setFormError(result.message);
+      if (error) {
+        setFormError(error.message);
+        resetCaptcha();
         return;
       }
+      resetCaptcha();
       setNotice("If that email can receive mail from Supabase, a reset link is on its way.");
       return;
     }
@@ -247,7 +274,11 @@ export function AuthScreen({ mode }: { mode: Mode }) {
             </p>
           ) : null}
 
-          <Button type="submit" className="w-full" disabled={pending !== null}>
+          {needsCaptcha ? (
+            <TurnstileWidget ref={turnstileRef} onSuccess={setCaptchaToken} onClear={clearCaptcha} />
+          ) : null}
+
+          <Button type="submit" className="w-full" disabled={pending !== null || (needsCaptcha && !captchaToken)}>
             {submitLabel(mode, pending === "form")}
           </Button>
         </form>
@@ -283,37 +314,6 @@ export function AuthScreen({ mode }: { mode: Mode }) {
       </div>
     </div>
   );
-}
-
-type AuthRequestBody =
-  | { flow: "login" | "signup"; email: string; password: string }
-  | { flow: "forgot"; email: string };
-
-type AuthRequestResult =
-  | { ok: true; status: string }
-  | { ok: false; message: string };
-
-async function sendAuthRequest(body: AuthRequestBody): Promise<AuthRequestResult> {
-  try {
-    const response = await fetch("/api/auth", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const result = (await response.json()) as Partial<AuthRequestResult> & { message?: string };
-    if (!response.ok || result.ok !== true) {
-      return {
-        ok: false,
-        message: typeof result.message === "string" ? result.message : "Account access could not be completed. Try again.",
-      };
-    }
-    return {
-      ok: true,
-      status: typeof result.status === "string" ? result.status : "complete",
-    };
-  } catch {
-    return { ok: false, message: "awarely.ai could not complete that request. Check your connection and try again." };
-  }
 }
 
 function errorTitle(mode: Mode): string {
