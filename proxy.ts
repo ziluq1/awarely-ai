@@ -77,11 +77,16 @@ function isAuthPath(pathname: string): boolean {
     pathname === "/auth/callback" ||
     pathname.startsWith("/auth/callback/") ||
     pathname === "/auth/confirm" ||
+    pathname.startsWith("/auth/confirm/") ||
     pathname === "/auth/hash"
   );
 }
 
 function shouldForwardAuth(url: URL): boolean {
+  // Keep token_hash on /auth/confirm* so scanners cannot consume the OTP via a GET redirect.
+  if (url.searchParams.has("token_hash") && isAuthPath(url.pathname) && url.pathname.startsWith("/auth/confirm")) {
+    return false;
+  }
   if (url.searchParams.has("code") || url.searchParams.has("token_hash")) return true;
   const code = url.searchParams.get("error_code");
   return code === "otp_expired" || code === "otp_disabled" || code === "access_denied";

@@ -13,7 +13,8 @@ export type FinishAuthResult =
 
 /**
  * Completes an auth redirect in the browser.
- * Handles: #access_token (implicit), ?code= (PKCE), ?token_hash=&type= (OTP).
+ * Handles: #access_token (implicit), ?code= (PKCE).
+ * token_hash links are forwarded to /auth/confirm for a click-to-verify POST.
  */
 export async function finishAuthFromLocation(forcedNext?: string): Promise<FinishAuthResult> {
   const search = new URLSearchParams(window.location.search);
@@ -40,23 +41,19 @@ export async function finishAuthFromLocation(forcedNext?: string): Promise<Finis
   const tokenHash = search.get("token_hash");
   const otpType = search.get("type");
   if (tokenHash) {
+    // Never verify OTP on page load — email scanners consume one-time links.
+    // Send the user to the click-to-confirm page instead.
     if (!isEmailOtpType(otpType)) {
-      console.error("[auth] verifyOtp rejected: missing or invalid type", { otpType, hasTokenHash: true });
+      console.error("[auth] token_hash rejected: missing or invalid type", { otpType, hasTokenHash: true });
       return { ok: false, message: authLinkMessage("invalid") };
     }
-    const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: otpType });
-    if (error) {
-      console.error("[auth] verifyOtp failed:", error.message, error);
-      return { ok: false, message: authLinkMessage(authExchangeError(error.message)) };
-    }
-    const done = finishSession({
-      pathname,
-      type: otpType,
-      next: search.get("next"),
-      forcedNext,
-    });
-    if (done.ok) clearAuthParamsFromUrl();
-    return done;
+    const confirm = new URLSearchParams();
+    confirm.set("token_hash", tokenHash);
+    confirm.set("type", otpType);
+    const next = search.get("next");
+    if (next) confirm.set("next", next);
+    else if (forcedNext) confirm.set("next", forcedNext);
+    return { ok: true, next: `/auth/confirm?${confirm.toString()}` };
   }
 
   const code = search.get("code");
