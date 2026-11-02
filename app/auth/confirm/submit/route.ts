@@ -24,10 +24,21 @@ export async function POST(request: Request) {
   });
 
   if (error) {
-    return NextResponse.redirect(errorUrl(origin, error.message), 303);
+    return NextResponse.redirect(errorUrl(origin, confirmErrorMessage(error.message)), 303);
   }
 
   return NextResponse.redirect(new URL(next, origin), 303);
+}
+
+const USED_OR_EXPIRED =
+  "This link was already used or has expired. If you already confirmed your email, you can log in. Otherwise sign up again to get a new email.";
+
+function confirmErrorMessage(message: string): string {
+  const text = message.toLowerCase();
+  if (text.includes("expir") || text.includes("used") || text.includes("invalid") || text.includes("otp")) {
+    return USED_OR_EXPIRED;
+  }
+  return message;
 }
 
 function text(value: FormDataEntryValue | null): string {

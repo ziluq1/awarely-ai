@@ -21,6 +21,23 @@ export async function finishAuthFromLocation(forcedNext?: string): Promise<Finis
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const pathname = window.location.pathname;
 
+  const tokenHash = search.get("token_hash");
+  const otpType = search.get("type");
+  // Never verify OTP on page load — send token_hash links to the click-to-confirm page.
+  if (tokenHash) {
+    if (!isEmailOtpType(otpType)) {
+      console.error("[auth] token_hash rejected: missing or invalid type", { otpType, hasTokenHash: true });
+      return { ok: false, message: authLinkMessage("invalid") };
+    }
+    const confirm = new URLSearchParams();
+    confirm.set("token_hash", tokenHash);
+    confirm.set("type", otpType);
+    const next = search.get("next");
+    if (next) confirm.set("next", next);
+    else if (forcedNext) confirm.set("next", forcedNext);
+    return { ok: true, next: `/auth/confirm?${confirm.toString()}` };
+  }
+
   const providerError = search.get("error") || search.get("error_code") || hash.get("error") || hash.get("error_code");
   if (providerError) {
     const description = search.get("error_description") || hash.get("error_description");
@@ -36,24 +53,6 @@ export async function finishAuthFromLocation(forcedNext?: string): Promise<Finis
   if (!supabase) {
     console.error("[auth] Supabase browser client is not configured");
     return { ok: false, message: authLinkMessage("config") };
-  }
-
-  const tokenHash = search.get("token_hash");
-  const otpType = search.get("type");
-  if (tokenHash) {
-    // Never verify OTP on page load — email scanners consume one-time links.
-    // Send the user to the click-to-confirm page instead.
-    if (!isEmailOtpType(otpType)) {
-      console.error("[auth] token_hash rejected: missing or invalid type", { otpType, hasTokenHash: true });
-      return { ok: false, message: authLinkMessage("invalid") };
-    }
-    const confirm = new URLSearchParams();
-    confirm.set("token_hash", tokenHash);
-    confirm.set("type", otpType);
-    const next = search.get("next");
-    if (next) confirm.set("next", next);
-    else if (forcedNext) confirm.set("next", forcedNext);
-    return { ok: true, next: `/auth/confirm?${confirm.toString()}` };
   }
 
   const code = search.get("code");

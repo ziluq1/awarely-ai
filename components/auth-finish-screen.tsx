@@ -38,8 +38,11 @@ export function AuthFinishScreen({
       </PageHeader>
       {message ? (
         <ErrorBlock title="That link did not finish sign-in" message={message}>
-          <Link className={buttonClass("secondary")} href="/login">
-            Back to log in
+          <Link className={buttonClass("primary")} href="/login">
+            Log in
+          </Link>
+          <Link className={buttonClass("secondary")} href="/signup">
+            Back to sign up
           </Link>
         </ErrorBlock>
       ) : (

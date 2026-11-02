@@ -9,6 +9,18 @@ const AUTH_PAGES = new Set(["/login", "/signup"]);
 
 export async function proxy(request: NextRequest) {
   const url = request.nextUrl;
+
+  // Never redirect, refresh, or otherwise touch /auth/confirm* — OTP must wait for the POST button.
+  if (isConfirmPath(url.pathname)) {
+    return NextResponse.next({ request });
+  }
+
+  if (url.searchParams.has("token_hash") && !isConfirmPath(url.pathname)) {
+    const dest = url.clone();
+    dest.pathname = "/auth/confirm";
+    return NextResponse.redirect(dest);
+  }
+
   if (shouldForwardAuth(url) && !isAuthPath(url.pathname)) {
     const dest = url.clone();
     dest.pathname = "/auth/callback";
@@ -72,22 +84,21 @@ export async function proxy(request: NextRequest) {
   return redirect;
 }
 
+function isConfirmPath(pathname: string): boolean {
+  return pathname === "/auth/confirm" || pathname.startsWith("/auth/confirm/");
+}
+
 function isAuthPath(pathname: string): boolean {
   return (
     pathname === "/auth/callback" ||
     pathname.startsWith("/auth/callback/") ||
-    pathname === "/auth/confirm" ||
-    pathname.startsWith("/auth/confirm/") ||
+    isConfirmPath(pathname) ||
     pathname === "/auth/hash"
   );
 }
 
 function shouldForwardAuth(url: URL): boolean {
-  // Keep token_hash on /auth/confirm* so scanners cannot consume the OTP via a GET redirect.
-  if (url.searchParams.has("token_hash") && isAuthPath(url.pathname) && url.pathname.startsWith("/auth/confirm")) {
-    return false;
-  }
-  if (url.searchParams.has("code") || url.searchParams.has("token_hash")) return true;
+  if (url.searchParams.has("code")) return true;
   const code = url.searchParams.get("error_code");
   return code === "otp_expired" || code === "otp_disabled" || code === "access_denied";
 }

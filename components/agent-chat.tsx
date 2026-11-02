@@ -432,13 +432,7 @@ function ReplyCard({ reply }: { reply: CompanionSuccess }) {
       {reply.safety ? (
         <SafetyNotice prominent={reply.safety.level === "clear"} immediateDanger={reply.safety.immediateDanger} />
       ) : null}
-      {reply.source === "model" ? (
-        reply.tool ? (
-          <ToolCard tool={reply.tool} />
-        ) : (
-          <p className="mt-3 text-xs">No tool was used for this reply.</p>
-        )
-      ) : null}
+      {reply.source === "model" && reply.tool ? <ToolCard tool={reply.tool} /> : null}
     </article>
   );
 }

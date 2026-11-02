@@ -45,7 +45,7 @@ export function isEmailVerified(user: { email_confirmed_at?: string | null; conf
 
 const PRODUCTION_APP_ORIGIN = "https://awarely-ai.vercel.app";
 
-export const SIGNUP_EMAIL_REDIRECT_TO = "https://awarely-ai.vercel.app/auth/callback";
+export const SIGNUP_EMAIL_REDIRECT_TO = "https://awarely-ai.vercel.app/auth/confirm";
 export const PASSWORD_RESET_REDIRECT_TO = "https://awarely-ai.vercel.app/auth/callback/recovery";
 
 export function isLocalOrigin(origin: string): boolean {
@@ -119,8 +119,9 @@ export function authExchangeError(message: string): AuthLinkError {
 
 export function authLinkMessage(error: string | null): string {
   if (error === "config") return "Supabase is not configured in this app yet.";
-  if (error === "expired") return "That link has expired. Request a new email and use the newest link.";
-  if (error === "used") return "That link was already used. Log in, or request a new confirmation email if your address is still unconfirmed.";
+  if (error === "expired" || error === "used") {
+    return "This link was already used or has expired. If you already confirmed your email, you can log in. Otherwise sign up again to get a new email.";
+  }
   if (error === "verifier") {
     return "Open the link in the same browser you used to sign up, or request a new confirmation email.";
   }
