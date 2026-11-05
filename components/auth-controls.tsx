@@ -95,16 +95,24 @@ function SignedIn({
       aria-current={onProfile ? "page" : undefined}
       className={
         compact
-          ? "flex min-w-0 max-w-[11rem] items-center gap-2 rounded-full"
-          : `flex min-w-0 items-center gap-3 rounded-2xl border border-line p-3 ${onProfile ? "bg-accent" : "bg-background hover:bg-accent"}`
+          ? `flex min-w-0 max-w-[11rem] items-center gap-2 rounded-full ${onProfile ? "bg-nav-current text-nav-current-text px-2 py-1" : ""}`
+          : `flex min-w-0 items-center gap-3 rounded-2xl border border-line p-3 ${onProfile ? "bg-nav-current text-nav-current-text" : "bg-background hover:bg-accent"}`
       }
     >
       <Avatar userId={user.id} name={name} hasPhoto={user.hasAvatar} revision={user.avatarRevision} size={compact ? "sm" : "md"} />
       <div className="min-w-0">
-        <p className={compact ? "truncate text-xs font-medium text-foreground" : "truncate text-sm font-medium text-foreground"}>
+        <p
+          className={
+            compact
+              ? `truncate text-xs font-medium ${onProfile ? "text-nav-current-text" : "text-foreground"}`
+              : `truncate text-sm font-medium ${onProfile ? "text-nav-current-text" : "text-foreground"}`
+          }
+        >
           {compact ? user.email || name : name}
         </p>
-        {compact ? null : <p className="truncate text-xs text-muted">{user.email}</p>}
+        {compact ? null : (
+          <p className={`truncate text-xs ${onProfile ? "text-nav-current-text/80" : "text-muted"}`}>{user.email}</p>
+        )}
       </div>
     </Link>
   );
