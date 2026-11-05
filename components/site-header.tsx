@@ -29,8 +29,8 @@ function AppNav({ pathname, next = null }: { pathname: string | null; next?: str
           ))}
           <NavLink href="/shared" label="Shared timeline" current={isCurrent(pathname, "/shared", next)} />
           <AlertsLink pathname={pathname} current={isCurrent(pathname, "/notifications", next)} />
-          <NavLink href="/profile" label="Profile" current={pathname === "/profile" || Boolean(pathname?.startsWith("/profile/"))} />
-          <NavLink href="/settings" label="Settings" current={pathname === "/settings"} />
+          <NavLink href="/profile" label="Profile" current={isCurrent(pathname, "/profile", next)} />
+          <NavLink href="/settings" label="Settings" current={isCurrent(pathname, "/settings", next)} />
         </nav>
         <div className="mt-auto space-y-2 pt-2">
           <AuthControls part="identity" />
@@ -42,8 +42,8 @@ function AppNav({ pathname, next = null }: { pathname: string | null; next?: str
         <div className="ml-auto flex w-full min-w-0 flex-wrap items-center justify-end gap-2 min-[430px]:w-auto min-[430px]:max-w-[calc(100%-8.5rem)]">
           <AuthControls compact />
           <AlertsLink pathname={pathname} current={isCurrent(pathname, "/notifications", next)} toolbar />
-          <NavLink href="/profile" label="Profile" current={pathname === "/profile" || Boolean(pathname?.startsWith("/profile/"))} toolbar />
-          <NavLink href="/settings" label="Settings" current={pathname === "/settings"} toolbar />
+          <NavLink href="/profile" label="Profile" current={isCurrent(pathname, "/profile", next)} toolbar />
+          <NavLink href="/settings" label="Settings" current={isCurrent(pathname, "/settings", next)} toolbar />
         </div>
       </div>
       <nav
@@ -59,7 +59,7 @@ function AppNav({ pathname, next = null }: { pathname: string | null; next?: str
   );
 }
 
-const SIGNED_OUT_TABS = ["/timeline", "/friends", "/shared", "/notifications"];
+const SIGNED_OUT_TABS = ["/timeline", "/friends", "/shared", "/notifications", "/profile", "/settings"];
 
 function isCurrent(pathname: string | null, href: string, next?: string | null) {
   if (pathname && (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`))) return true;
